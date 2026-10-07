@@ -17,11 +17,11 @@ Core Design Tenets
 * **Executable Ground Truth**: Every file must compile cleanly under modern standard-compliant compilers with pedantic warnings enabled.
 * **Zero Cognitive Padding**: Code is structured as an immediate, searchable syntax reference rather than an introductory tutorial.
 
-Supported Languages
-===================
+Supported Languages and Standards
+=================================
 
 .. list-table::
-   :widths: 20 25 35 20
+   :widths: 15 35 30 20
    :header-rows: 1
 
    * - Language
@@ -30,7 +30,27 @@ Supported Languages
      - Status
 
    * - C
-     - ISO/IEC 9899:2024, C23
+     - ANSI X3.159-1989, ISO/IEC 9899:1990 (C89/C90)
+     - ``c/c89.c``
+     - Verified
+
+   * - C
+     - ISO/IEC 9899:1999 (C99)
+     - ``c/c99.c``
+     - Verified
+
+   * - C
+     - ISO/IEC 9899:2011 (C11)
+     - ``c/c11.c``
+     - Verified
+
+   * - C
+     - ISO/IEC 9899:2018 (C17)
+     - ``c/c17.c``
+     - Verified
+
+   * - C
+     - ISO/IEC 9899:2024 (C23)
      - ``c/c23.c``
      - Verified
 
@@ -44,6 +64,10 @@ Repository Structure
    ├── README.rst
    └── c/
        ├── README.rst
+       ├── c89.c
+       ├── c99.c
+       ├── c11.c
+       ├── c17.c
        └── c23.c
 
 Verification
@@ -55,8 +79,18 @@ Build and verify all language implementations using GNU Make:
 
    make check
 
-To verify an individual language target:
+To verify all C standards:
 
 .. code-block:: bash
 
    make check-c
+
+To verify an individual standard:
+
+.. code-block:: bash
+
+   make check-c89
+   make check-c99
+   make check-c11
+   make check-c17
+   make check-c23

@@ -1,85 +1,99 @@
 ============================
-C23 Reference Implementation
+C Reference Implementations
 ============================
 
-The canonical, minimal ISO/IEC 9899:2024 (C23) reference implementation for omni.
+Canonical, minimal C reference implementations across all standard iterations from C89 to C23.
 
 Executive Summary
 =================
 
-``c/c23.c`` is a single-file, exhaustive compendium of the modern C language under the ISO/IEC 9899:2024 standard. It demonstrates all grammar additions, keywords, type specifiers, preprocessor features, and standard attributes introduced or updated in C23 while compiling cleanly under strict zero-warning compiler configurations.
+The ``c/`` directory provides an exhaustive, self-contained syntax compendium for each ratified edition of the ISO/IEC 9899 standard. Each file exercises 100% of the language features introduced or permitted by its respective standard while strictly omitting constructs from future editions. All implementations compile cleanly under both GCC and Clang with maximum warning enforcement and zero warnings permitted.
+
+Standards Matrix
+================
+
+.. list-table::
+   :widths: 15 25 25 35
+   :header-rows: 1
+
+   * - Standard
+     - Formal Identifier
+     - File
+     - Distinguishing Additions
+
+   * - C89/C90
+     - ANSI X3.159-1989, ISO/IEC 9899:1990
+     - ``c/c89.c``
+     - Declarations strictly before statements, K&R compatibility, no trailing commas in enums, exact 32 keywords.
+
+   * - C99
+     - ISO/IEC 9899:1999
+     - ``c/c99.c``
+     - Mixed declarations, line comments, ``for`` loop declarations, ``long long``, ``_Bool``, ``inline``, ``restrict``, VLAs, flexible array members, designated initializers, compound literals, variadic macros, ``__func__``, hex floats.
+
+   * - C11
+     - ISO/IEC 9899:2011
+     - ``c/c11.c``
+     - ``_Static_assert``, ``_Alignas``, ``_Alignof``, ``_Atomic``, ``_Generic``, ``_Noreturn``, ``_Thread_local``, anonymous structs and unions, ``char16_t`` and ``char32_t`` unicode literals.
+
+   * - C17
+     - ISO/IEC 9899:2018
+     - ``c/c17.c``
+     - Defect-report resolution release; ``__STDC_VERSION__ = 201710L``; deprecation of ``ATOMIC_VAR_INIT``.
+
+   * - C23
+     - ISO/IEC 9899:2024
+     - ``c/c23.c``
+     - Extended ``#embed``, standard attributes (``[[nodiscard]]``, ``[[reproducible]]``, etc.), ``constexpr``, ``nullptr``, ``auto`` type deduction, ``typeof``, ``typeof_unqual``, ``_BitInt``, binary literals, digit separators, UTF-8 char constants, labels anywhere.
 
 Toolchain Baseline
 ==================
 
-The reference file is tested against the following toolchain baseline:
+All implementations are continuously verified against the following toolchains:
 
 .. list-table::
-   :widths: 30 30 40
+   :widths: 20 20 60
    :header-rows: 1
 
-   * - Compiler
-     - Tested Version
-     - Invocation
+   * - Target
+     - Standard Flag
+     - Enforced Compiler Flags
 
-   * - GCC
-     - 16.2+
-     - ``gcc -std=c23 -Wall -Wextra -pedantic -Werror -pthread c23.c -lm -o c23``
+   * - C89
+     - ``-std=c89``
+     - ``-Wall -Wextra -pedantic -Werror -lm``
 
-   * - LLVM Clang
-     - 22.1+
-     - ``clang -std=c23 -Wall -Wextra -pedantic -Werror -pthread c23.c -lm -o c23``
+   * - C99
+     - ``-std=c99``
+     - ``-Wall -Wextra -pedantic -Werror -lm``
 
-Specification Coverage Matrix
-=============================
+   * - C11
+     - ``-std=c11``
+     - ``-Wall -Wextra -pedantic -Werror -pthread -lm``
 
-.. list-table::
-   :widths: 25 35 40
-   :header-rows: 1
+   * - C17
+     - ``-std=c17``
+     - ``-Wall -Wextra -pedantic -Werror -pthread -lm``
 
-   * - ISO C23 Clause
-     - Focus Area
-     - Key Features Exercised
+   * - C23
+     - ``-std=c23``
+     - ``-Wall -Wextra -pedantic -Werror -pthread -lm``
 
-   * - Clause 6.4
-     - Lexical elements
-     - Binary literals ``0b...``, digit separators ``'``, UTF-8 char ``u8'...'``, standard keywords (``bool``, ``true``, ``false``, ``nullptr``, ``alignas``, ``alignof``, ``constexpr``, ``thread_local``, ``typeof``, ``typeof_unqual``).
+Verification and Execution
+==========================
 
-   * - Clause 6.5
-     - Expressions and operators
-     - ``_Generic`` selection, precedence chaining, compound assignments, bitwise logic, ternary expressions, comma operator.
-
-   * - Clause 6.7
-     - Declarations and types
-     - ``_BitInt(N)`` with ``wb``/``uwb`` suffixes, fixed underlying enum types (``enum Tag : uint8_t``), anonymous structs and unions, flexible array members, universal zero-initialization ``{}``, designated initializers, compound literals.
-
-   * - Clause 6.7.12
-     - Standard attributes
-     - ``[[nodiscard]]`` with optional reason string, ``[[deprecated]]``, ``[[fallthrough]]``, ``[[maybe_unused]]``, ``[[noreturn]]``, ``[[reproducible]]``, ``[[unsequenced]]``.
-
-   * - Clause 6.8
-     - Statements and control flow
-     - Labels preceding declarations, labels terminating compound statements without null statements, loops, jump statements.
-
-   * - Clause 6.9
-     - Function declarations
-     - Modern empty parameter list semantics (``f()`` identical to ``f(void)``), variable-length array prototype notation ``[*]``, array parameter qualifiers (``static restrict``).
-
-   * - Clause 6.10
-     - Preprocessor directives
-     - Direct binary inclusion with ``#embed`` (featuring ``limit``, ``prefix``, ``suffix``, ``if_empty``), ``__VA_OPT__`` variadic expansions, ``#elifdef``, ``#elifndef``, ``__has_embed``, ``__has_include``, ``__has_c_attribute``, ``#warning``, ``_Pragma``.
-
-Compilation and Execution
-=========================
-
-Build the executable:
+To build and execute all C standard implementations:
 
 .. code-block:: bash
 
-   gcc -std=c23 -Wall -Wextra -pedantic -Werror -pthread c23.c -lm -o c23
+   make check-c
 
-Run the verification harness:
+To verify an individual standard:
 
 .. code-block:: bash
 
-   ./c23
+   make check-c89
+   make check-c99
+   make check-c11
+   make check-c17
+   make check-c23
