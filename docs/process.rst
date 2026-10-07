@@ -103,6 +103,7 @@ To ensure these demonstrations never mislead developers into adopting unsafe idi
       }
 
 2. **Language Security Catalog**: The corresponding language directory must contain a ``security.rst`` file indexing the tag, detailing:
+
    * The architectural mechanism.
    * Associated Common Weakness Enumeration identifiers (CWE).
    * Industry standards prohibiting the construct (MISRA, Linux Kernel, CERT).

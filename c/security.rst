@@ -1,13 +1,13 @@
-=================================================
+================================================
 C Language Security and Hazardous Feature Matrix
-=================================================
+================================================
 
 Operational threat model and hazard advisory for C language constructs demonstrated in omni.
 
 Executive Summary
 =================
 
-The ``omni`` C suite (``c89.c`` through ``c23.c``) serves as an exhaustive syntactic reference and compiler saturator. To demonstrate 100% of the language, these files deliberately exercise historical, implementation-defined, and memory-hazardous constructs. 
+The ``omni`` C suite (``c89.c`` through ``c23.c``) serves as an exhaustive syntactic reference and compiler saturator. To demonstrate 100% of the language, these files deliberately exercise historical, implementation-defined, and memory-hazardous constructs.
 
 This code is an executable syntax compendium; it is not hardened production software. When using ``omni`` for syntax reference, never copy hazardous constructs into production systems without defensive architectural controls.
 

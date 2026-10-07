@@ -29,7 +29,7 @@ Step-by-Step Submission Process
 Step 1: Consult the Creation Process Guide
 ------------------------------------------
 
-Before writing code, read :doc:`docs/process` to understand the standard extraction methodology, state accumulator design, and dual-path fallback patterns.
+Before writing code, read `Compendium Creation Process <docs/process.rst>`_ to understand the standard extraction methodology, state accumulator design, and dual-path fallback patterns.
 
 Step 2: Create the Language Directory
 -------------------------------------
@@ -78,6 +78,15 @@ Verify your contribution locally against all supported compilers:
 
 Both the compiler verification harness and documentation linters must report zero warnings and zero errors.
 
+Step 6: Submit via Your Preferred Platform
+------------------------------------------
+
+Omni accepts contributions on any of our primary and secondary git remotes:
+
+* **GitLab Merge Requests (Canonical)**: Create a fork and submit an MR on `GitLab <https://gitlab.com/renich/omni/-/merge_requests>`_.
+* **GitHub Pull Requests**: Create a fork and submit a PR on `GitHub <https://github.com/renich/omni/pulls>`_.
+* **OpenLat Patches**: Push branches or submit patches via `OpenLat <https://git.openlat.dev/renich/omni>`_.
+
 Commit and Pull Request Conventions
 ===================================
 
@@ -115,3 +124,8 @@ Cryptographic signing is enabled and encouraged across the repository. Sign all 
 .. code-block:: bash
 
    git commit -S -m "feat(lang): add reference implementation"
+
+Financial Support and Donations
+===============================
+
+If you find omni valuable for your compiler engineering, syntax reference, or AI development workflows, financial contributions are gratefully accepted via `Liberapay <https://liberapay.com/Renich/donate>`_.

@@ -1,6 +1,6 @@
-============================
+===========================
 C Reference Implementations
-============================
+===========================
 
 Canonical, minimal C reference implementations across all standard iterations from C89 to C23.
 

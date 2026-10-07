@@ -7,7 +7,7 @@ pages:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   before_script:
-    - pip install --no-cache-dir pygments
+    - pip install --no-cache-dir pygments docutils markdown
   script:
     - python3 scripts/build_site.py
   artifacts:

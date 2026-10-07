@@ -20,11 +20,13 @@ Unreleased
 .. rubric:: Added
 
 * Canonical C language compendium suite covering all ratified ISO C standard editions:
+
   * ANSI X3.159-1989 / ISO/IEC 9899:1990 (``c/c89.c``).
   * ISO/IEC 9899:1999 (``c/c99.c``).
   * ISO/IEC 9899:2011 (``c/c11.c``).
   * ISO/IEC 9899:2018 (``c/c17.c``).
   * ISO/IEC 9899:2024 (``c/c23.c``).
+
 * Exhaustive keyword saturation: 59/59 keywords in C23, full primitive keyword coverage (including ``_Bool`` and dual-path ``_Imaginary``) across C99, C11, and C17.
 * Dual-Path Saturation Pattern for conditionally supported ISO Annexes (Annex G Imaginary types and Annex F/H Decimal Floating Point).
 * Mathematical scalar state accumulator (checksum) consuming all declared variables without dead cast suppression lines.

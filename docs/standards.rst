@@ -56,7 +56,7 @@ The following reference implementations are fully implemented, verified with zer
      - ``c/c23.c``
      - Verified (GCC, Clang)
 
-For distinguishing features, compiler flags, and threat modeling for the C family, consult the :doc:`../c/README` and the :doc:`../c/security` catalog.
+For distinguishing features, compiler flags, and threat modeling for the C family, consult the `C Reference Suite <../c/README.rst>`_ and the `C Security Threat Model <../c/security.rst>`_ catalog.
 
 Language Horizon and Roadmap
 ============================
@@ -126,6 +126,6 @@ Contributing a Language Target
 
 To introduce a new language or standard edition to omni:
 
-1. Follow the 6-phase engineering lifecycle in :doc:`process`.
-2. Adhere to repository layout conventions in :doc:`architecture`.
-3. Verify requirements and testing checklists in :doc:`../CONTRIBUTING`.
+1. Follow the 6-phase engineering lifecycle in `process.rst <process.rst>`_.
+2. Adhere to repository layout conventions in `architecture.rst <architecture.rst>`_.
+3. Verify requirements and testing checklists in `CONTRIBUTING.rst <../CONTRIBUTING.rst>`_.

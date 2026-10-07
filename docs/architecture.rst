@@ -70,6 +70,7 @@ The root ``GNUmakefile`` enforces the following requirements across all language
 3. **Automatic Error Cleanup**: ``.DELETE_ON_ERROR:`` is enabled globally to ensure interrupted builds delete partial target artifacts.
 4. **Strict Shell Defaults**: ``SHELL`` is set to ``/usr/bin/bash`` with ``.SHELLFLAGS := -euo pipefail -c`` to guarantee immediate pipeline failure detection.
 5. **Standardized Check Targets**: The build harness exposes uniform top-level targets:
+
    * ``make all``: Default target, runs ``make check``.
    * ``make check``: Builds and executes all verified language implementations across all detected compilers.
    * ``make check-<language>``: Verifies all editions for a specific language (for example, ``make check-c``).

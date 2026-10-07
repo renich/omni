@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """
 Omni Static Site Generator
 Builds a fast, lightweight, self-contained multi-language documentation site and code browser.
 Features:
-- IDE-style File Explorer supporting arbitrary numbers of languages and editions
-- Dedicated Language Security Matrix & Threat Catalog per language
+- Wide, responsive IDE-style File Explorer supporting arbitrary numbers of languages and editions
+- Rendered HTML documentation for security matrices and guides, with interactive raw source toggle
 - Interactive code browser with line numbers and Pygments syntax highlighting (friendly / dracula)
 - Light/Dark theme switching with system preference detection
 - Deep linking via URL hash routing
@@ -18,6 +18,18 @@ import pygments
 from pygments.lexers import CLexer, TextLexer
 from pygments.lexers.markup import RstLexer, MarkdownLexer
 from pygments.formatters import HtmlFormatter
+
+try:
+    from docutils.core import publish_parts
+    HAVE_DOCUTILS = True
+except ImportError:
+    HAVE_DOCUTILS = False
+
+try:
+    import markdown
+    HAVE_MARKDOWN = True
+except ImportError:
+    HAVE_MARKDOWN = False
 
 # Definition of verified languages and compendiums
 C_STANDARDS = [
@@ -302,7 +314,7 @@ HORIZON_LANGUAGES = [
     },
 ]
 
-# Global documentation files to highlight
+# Global documentation files
 GLOBAL_DOCS = [
     {
         "id": "doc-standards",
@@ -334,7 +346,7 @@ GLOBAL_DOCS = [
         "title": "Contributing Guidelines",
         "file": "CONTRIBUTING.rst",
         "category": "Governance",
-        "summary": "Contribution requirements, workflow steps, submission checklist, and verification standards.",
+        "summary": "Contribution requirements, workflow steps, submission checklist, and multi-platform channels.",
     },
     {
         "id": "doc-agents",
@@ -357,19 +369,45 @@ def get_lexer_for_file(filepath: str):
     return TextLexer()
 
 
-def highlight_file(filepath: Path, formatter_light: HtmlFormatter, formatter_dark: HtmlFormatter) -> tuple[str, str, int, str]:
+def render_doc_html(content: str, filepath: str) -> str:
+    """Renders documentation (RST or Markdown) to HTML fragment."""
+    if filepath.endswith(".rst") and HAVE_DOCUTILS:
+        try:
+            parts = publish_parts(content, writer_name="html5", settings_overrides={"report_level": 5})
+            return parts.get("fragment", "")
+        except Exception as e:
+            return f"<p class='error'>Documentation render warning: {e}</p>"
+    elif filepath.endswith(".md") and HAVE_MARKDOWN:
+        try:
+            return markdown.markdown(content, extensions=["tables", "fenced_code"])
+        except Exception as e:
+            return f"<p class='error'>Markdown render warning: {e}</p>"
+    return ""
+
+
+def highlight_file(filepath: Path, formatter_light: HtmlFormatter, formatter_dark: HtmlFormatter) -> tuple[str, str, int, str, str]:
     if not filepath.exists():
-        return ("", "", 0, "")
+        return ("", "", 0, "", "")
     content = filepath.read_text(encoding="utf-8")
     lines = len(content.splitlines())
     lexer = get_lexer_for_file(str(filepath))
     html_light = pygments.highlight(content, lexer, formatter_light)
     html_dark = pygments.highlight(content, lexer, formatter_dark)
-    return (html_light, html_dark, lines, content)
+    rendered_doc = render_doc_html(content, str(filepath))
+    return (html_light, html_dark, lines, content, rendered_doc)
 
 
 def build_site(repo_root: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy assets into output directory
+    assets_src = repo_root / "assets"
+    assets_dst = output_dir / "assets"
+    assets_dst.mkdir(parents=True, exist_ok=True)
+    if assets_src.exists():
+        for asset in assets_src.glob("*"):
+            if asset.is_file():
+                (assets_dst / asset.name).write_bytes(asset.read_bytes())
 
     formatter_light = HtmlFormatter(style="friendly", nowrap=False, linenos="table", cssclass="highlight-light")
     formatter_dark = HtmlFormatter(style="dracula", nowrap=False, linenos="table", cssclass="highlight-dark")
@@ -381,7 +419,7 @@ def build_site(repo_root: Path, output_dir: Path) -> None:
     processed_c_standards = []
     for item in C_STANDARDS:
         src = repo_root / item["file"]
-        h_light, h_dark, lines, raw = highlight_file(src, formatter_light, formatter_dark)
+        h_light, h_dark, lines, raw, _ = highlight_file(src, formatter_light, formatter_dark)
         processed_c_standards.append({
             **item,
             "line_count": lines,
@@ -392,7 +430,7 @@ def build_site(repo_root: Path, output_dir: Path) -> None:
 
     # 2. Process C security and documentation
     c_sec_path = repo_root / "c/security.rst"
-    c_sec_light, c_sec_dark, c_sec_lines, c_sec_raw = highlight_file(c_sec_path, formatter_light, formatter_dark)
+    c_sec_light, c_sec_dark, c_sec_lines, c_sec_raw, c_sec_rendered = highlight_file(c_sec_path, formatter_light, formatter_dark)
     c_security_data = {
         "id": "c-security",
         "name": "security.rst",
@@ -401,12 +439,13 @@ def build_site(repo_root: Path, output_dir: Path) -> None:
         "line_count": c_sec_lines,
         "html_light": c_sec_light,
         "html_dark": c_sec_dark,
+        "rendered_doc": c_sec_rendered,
         "raw_code": c_sec_raw,
         "anchors": C_SECURITY_ANCHORS,
     }
 
     c_readme_path = repo_root / "c/README.rst"
-    c_readme_light, c_readme_dark, c_readme_lines, c_readme_raw = highlight_file(c_readme_path, formatter_light, formatter_dark)
+    c_readme_light, c_readme_dark, c_readme_lines, c_readme_raw, c_readme_rendered = highlight_file(c_readme_path, formatter_light, formatter_dark)
     c_readme_data = {
         "id": "c-readme",
         "name": "README.rst",
@@ -415,6 +454,7 @@ def build_site(repo_root: Path, output_dir: Path) -> None:
         "line_count": c_readme_lines,
         "html_light": c_readme_light,
         "html_dark": c_readme_dark,
+        "rendered_doc": c_readme_rendered,
         "raw_code": c_readme_raw,
     }
 
@@ -422,12 +462,13 @@ def build_site(repo_root: Path, output_dir: Path) -> None:
     processed_global_docs = []
     for doc in GLOBAL_DOCS:
         doc_src = repo_root / doc["file"]
-        h_light, h_dark, lines, raw = highlight_file(doc_src, formatter_light, formatter_dark)
+        h_light, h_dark, lines, raw, rendered = highlight_file(doc_src, formatter_light, formatter_dark)
         processed_global_docs.append({
             **doc,
             "line_count": lines,
             "html_light": h_light,
             "html_dark": h_dark,
+            "rendered_doc": rendered,
             "raw_code": raw,
         })
 
@@ -505,7 +546,7 @@ def generate_html(
     # Panels generation
     panels_html = []
 
-    # 1. C Standard Panels
+    # 1. C Standard Panels (Code Compendiums)
     for std in c_standards:
         features_li = "".join(f"<li>{feat}</li>" for feat in std["features"])
         anchors_pills = "".join(
@@ -577,7 +618,7 @@ def generate_html(
         """
         panels_html.append(panel)
 
-    # 2. C Security Threat Model Panel
+    # 2. C Security Threat Model Panel (Formatted Document + Raw Toggle)
     sec_rows = "".join(f"""
     <tr>
         <td><code class="anchor-code">{anchor['tag']}</code></td>
@@ -603,6 +644,10 @@ def generate_html(
                     <h2 class="meta-title">&#128737; {c_security['title']}</h2>
                 </div>
                 <div class="meta-actions">
+                    <div class="doc-view-toggle">
+                        <button class="btn-toggle active" id="btn-mode-doc-{c_security['id']}" onclick="setDocMode('{c_security['id']}', 'doc')">Formatted Document</button>
+                        <button class="btn-toggle" id="btn-mode-raw-{c_security['id']}" onclick="setDocMode('{c_security['id']}', 'raw')">Raw RST Source</button>
+                    </div>
                     <button class="btn-action btn-copy" onclick="copyContent('{c_security['id']}')">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                         <span id="copy-text-{c_security['id']}">Copy</span>
@@ -634,20 +679,28 @@ def generate_html(
             </div>
         </div>
 
-        <div class="code-container">
+        <!-- Rendered Document View -->
+        <div class="doc-rendered-container active" id="doc-rendered-{c_security['id']}">
+            <article class="doc-article">
+                {c_security['rendered_doc']}
+            </article>
+        </div>
+
+        <!-- Raw RST Source View -->
+        <div class="code-container doc-raw-container" id="doc-raw-{c_security['id']}">
             <div class="code-view code-light">
                 {c_security['html_light']}
             </div>
             <div class="code-view code-dark">
                 {c_security['html_dark']}
             </div>
-            <textarea id="raw-{c_security['id']}" style="display:none;" readonly>{c_security['raw_code']}</textarea>
         </div>
+        <textarea id="raw-{c_security['id']}" style="display:none;" readonly>{c_security['raw_code']}</textarea>
     </div>
     """
     panels_html.append(sec_panel)
 
-    # 3. C README Panel
+    # 3. C README Panel (Formatted Document + Raw Toggle)
     readme_panel = f"""
     <div class="view-panel" id="panel-{c_readme['id']}">
         <div class="panel-meta">
@@ -664,6 +717,10 @@ def generate_html(
                     <h2 class="meta-title">{c_readme['title']}</h2>
                 </div>
                 <div class="meta-actions">
+                    <div class="doc-view-toggle">
+                        <button class="btn-toggle active" id="btn-mode-doc-{c_readme['id']}" onclick="setDocMode('{c_readme['id']}', 'doc')">Formatted Document</button>
+                        <button class="btn-toggle" id="btn-mode-raw-{c_readme['id']}" onclick="setDocMode('{c_readme['id']}', 'raw')">Raw RST Source</button>
+                    </div>
                     <button class="btn-action btn-copy" onclick="copyContent('{c_readme['id']}')">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                         <span id="copy-text-{c_readme['id']}">Copy</span>
@@ -679,20 +736,26 @@ def generate_html(
             </p>
         </div>
 
-        <div class="code-container">
+        <div class="doc-rendered-container active" id="doc-rendered-{c_readme['id']}">
+            <article class="doc-article">
+                {c_readme['rendered_doc']}
+            </article>
+        </div>
+
+        <div class="code-container doc-raw-container" id="doc-raw-{c_readme['id']}">
             <div class="code-view code-light">
                 {c_readme['html_light']}
             </div>
             <div class="code-view code-dark">
                 {c_readme['html_dark']}
             </div>
-            <textarea id="raw-{c_readme['id']}" style="display:none;" readonly>{c_readme['raw_code']}</textarea>
         </div>
+        <textarea id="raw-{c_readme['id']}" style="display:none;" readonly>{c_readme['raw_code']}</textarea>
     </div>
     """
     panels_html.append(readme_panel)
 
-    # 4. Global Docs Panels
+    # 4. Global Docs Panels (Formatted Document + Raw Toggle)
     for doc in global_docs:
         doc_panel = f"""
         <div class="view-panel" id="panel-{doc['id']}">
@@ -710,6 +773,10 @@ def generate_html(
                         <h2 class="meta-title">{doc['title']}</h2>
                     </div>
                     <div class="meta-actions">
+                        <div class="doc-view-toggle">
+                            <button class="btn-toggle active" id="btn-mode-doc-{doc['id']}" onclick="setDocMode('{doc['id']}', 'doc')">Formatted Document</button>
+                            <button class="btn-toggle" id="btn-mode-raw-{doc['id']}" onclick="setDocMode('{doc['id']}', 'raw')">Raw Source</button>
+                        </div>
                         <button class="btn-action btn-copy" onclick="copyContent('{doc['id']}')">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                             <span id="copy-text-{doc['id']}">Copy</span>
@@ -733,15 +800,21 @@ def generate_html(
                 </div>
             </div>
 
-            <div class="code-container">
+            <div class="doc-rendered-container active" id="doc-rendered-{doc['id']}">
+                <article class="doc-article">
+                    {doc['rendered_doc']}
+                </article>
+            </div>
+
+            <div class="code-container doc-raw-container" id="doc-raw-{doc['id']}">
                 <div class="code-view code-light">
                     {doc['html_light']}
                 </div>
                 <div class="code-view code-dark">
                     {doc['html_dark']}
                 </div>
-                <textarea id="raw-{doc['id']}" style="display:none;" readonly>{doc['raw_code']}</textarea>
             </div>
+            <textarea id="raw-{doc['id']}" style="display:none;" readonly>{doc['raw_code']}</textarea>
         </div>
         """
         panels_html.append(doc_panel)
@@ -860,13 +933,16 @@ def generate_html(
             backdrop-filter: blur(8px);
         }}
 
+        /* Fluid Wide Containers */
         .nav-container {{
             display: flex;
             justify-content: space-between;
             align-items: center;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 1.5rem;
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+            padding: 0 2rem;
+            box-sizing: border-box;
         }}
 
         .brand {{
@@ -924,10 +1000,12 @@ def generate_html(
         }}
 
         .hero {{
-            max-width: 1400px;
-            margin: 2.5rem auto 1.5rem auto;
-            padding: 0 1.5rem;
+            width: 100%;
+            max-width: 100%;
+            margin: 2rem 0 1.25rem 0;
+            padding: 0 2rem;
             text-align: center;
+            box-sizing: border-box;
         }}
 
         .hero h1 {{
@@ -940,7 +1018,7 @@ def generate_html(
         .hero-lead {{
             font-size: 1.15rem;
             color: var(--pico-muted-color);
-            max-width: 780px;
+            max-width: 900px;
             margin: 0 auto 1.5rem auto;
         }}
 
@@ -956,7 +1034,7 @@ def generate_html(
             display: inline-flex;
             align-items: center;
             gap: 0.45rem;
-            padding: 0.35rem 0.8rem;
+            padding: 0.35rem 0.85rem;
             border-radius: 20px;
             font-size: 0.825rem;
             text-decoration: none;
@@ -977,15 +1055,33 @@ def generate_html(
             font-weight: 600;
         }}
 
-        /* IDE-Style Split Explorer Layout */
+        .mirror-pill.donate {{
+            border-color: #f6c915;
+            color: #d97706;
+            font-weight: 600;
+        }}
+
+        /* Wide Fluid IDE-Style Layout */
         .explorer-layout {{
             display: grid;
-            grid-template-columns: 290px 1fr;
-            gap: 1.5rem;
+            grid-template-columns: 340px 1fr;
+            gap: 2rem;
             align-items: start;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 1.5rem 4rem 1.5rem;
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+            padding: 0 2rem 4rem 2rem;
+            box-sizing: border-box;
+        }}
+
+        @media (min-width: 1920px) {{
+            .explorer-layout {{
+                grid-template-columns: 370px 1fr;
+                padding: 0 3rem 4rem 3rem;
+            }}
+            .nav-container, .hero {{
+                padding: 0 3rem;
+            }}
         }}
 
         /* Explorer Sidebar */
@@ -993,10 +1089,10 @@ def generate_html(
             background: var(--pico-card-background-color);
             border: 1px solid var(--pico-muted-border-color);
             border-radius: var(--border-radius);
-            padding: 1rem;
+            padding: 1.15rem;
             position: sticky;
-            top: 5rem;
-            max-height: calc(100vh - 6.5rem);
+            top: 4.8rem;
+            max-height: calc(100vh - 6rem);
             overflow-y: auto;
         }}
 
@@ -1042,15 +1138,16 @@ def generate_html(
             background: transparent;
             border: none;
             border-radius: 6px;
-            padding: 0.45rem 0.6rem;
+            padding: 0.45rem 0.65rem;
             cursor: pointer;
             color: var(--pico-color);
             font-size: 0.875rem;
             font-weight: 500;
             text-align: left;
             transition: all 0.15s ease;
-            gap: 0.5rem;
-            margin-bottom: 0.15rem;
+            gap: 0.6rem;
+            margin-bottom: 0.2rem;
+            box-sizing: border-box;
         }}
 
         .nav-tree-item:hover {{
@@ -1077,6 +1174,7 @@ def generate_html(
             opacity: 0.8;
             width: 18px;
             text-align: center;
+            flex-shrink: 0;
         }}
 
         .sec-icon {{
@@ -1092,15 +1190,18 @@ def generate_html(
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            min-width: 0;
         }}
 
         .file-badge {{
+            flex-shrink: 0;
             font-size: 0.7rem;
-            padding: 0.1rem 0.4rem;
+            padding: 0.15rem 0.45rem;
             border-radius: 10px;
             background: var(--pico-muted-border-color);
             color: var(--pico-muted-color);
             font-weight: 600;
+            white-space: nowrap;
         }}
 
         .sec-badge {{
@@ -1116,6 +1217,7 @@ def generate_html(
         /* Workspace Main Pane */
         .workspace {{
             min-width: 0;
+            width: 100%;
         }}
 
         .view-panel {{
@@ -1148,6 +1250,7 @@ def generate_html(
             align-items: flex-start;
             gap: 1rem;
             margin-bottom: 0.75rem;
+            flex-wrap: wrap;
         }}
 
         .meta-breadcrumbs {{
@@ -1201,6 +1304,35 @@ def generate_html(
         .meta-actions {{
             display: flex;
             gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }}
+
+        /* Document View Mode Toggle */
+        .doc-view-toggle {{
+            display: inline-flex;
+            background: var(--pico-background-color);
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: var(--border-radius);
+            padding: 2px;
+            gap: 2px;
+        }}
+
+        .btn-toggle {{
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            padding: 0.3rem 0.65rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--pico-muted-color);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }}
+
+        .btn-toggle.active {{
+            background: var(--brand-primary);
+            color: #ffffff;
         }}
 
         .btn-action {{
@@ -1252,14 +1384,14 @@ def generate_html(
 
         .meta-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
             gap: 0.85rem;
             margin-bottom: 1rem;
         }}
 
         .meta-card {{
             background: var(--pico-background-color);
-            padding: 0.7rem 0.9rem;
+            padding: 0.75rem 1rem;
             border-radius: var(--border-radius);
             border: 1px solid var(--pico-muted-border-color);
             display: flex;
@@ -1385,61 +1517,73 @@ def generate_html(
             font-size: 0.75rem;
         }}
 
-        /* Horizon Blueprint Grid */
-        .horizon-blueprint-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1rem;
-            margin-top: 1rem;
-            border-top: 1px solid var(--pico-muted-border-color);
-            padding-top: 1rem;
-        }}
-
-        .blueprint-section h3 {{
-            font-size: 0.95rem;
-            margin-bottom: 0.5rem;
-        }}
-
-        .blueprint-list {{
-            padding-left: 1.25rem;
-            margin: 0;
-            font-size: 0.875rem;
-            color: var(--pico-muted-color);
-        }}
-
-        .blueprint-list li {{
-            margin-bottom: 0.25rem;
-        }}
-
-        .horizon-cta {{
-            margin-top: 1.25rem;
-            padding: 1rem;
-            background: var(--pico-background-color);
-            border-radius: var(--border-radius);
+        /* Rendered Document View */
+        .doc-rendered-container {{
+            display: none;
+            background: var(--pico-card-background-color);
             border: 1px solid var(--pico-muted-border-color);
-            text-align: center;
+            border-radius: var(--border-radius);
+            padding: 2.25rem;
+            overflow-x: auto;
         }}
 
-        .horizon-cta h3 {{
-            margin: 0 0 0.4rem 0;
-            font-size: 1.1rem;
+        .doc-rendered-container.active {{
+            display: block;
         }}
 
-        .horizon-cta p {{
-            margin: 0;
+        .doc-article {{
+            font-size: 0.95rem;
+            line-height: 1.7;
+        }}
+
+        .doc-article h1, .doc-article h2, .doc-article h3, .doc-article h4 {{
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            font-weight: 700;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+            padding-bottom: 0.35rem;
+        }}
+
+        .doc-article table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
             font-size: 0.875rem;
-            color: var(--pico-muted-color);
         }}
 
-        .text-link-btn {{
-            background: transparent;
-            border: none;
-            color: var(--brand-primary);
-            text-decoration: underline;
-            cursor: pointer;
-            padding: 0;
-            font-size: inherit;
-            font-family: inherit;
+        .doc-article th, .doc-article td {{
+            padding: 0.6rem 0.85rem;
+            border: 1px solid var(--pico-muted-border-color);
+        }}
+
+        .doc-article th {{
+            background: var(--pico-background-color);
+            font-weight: 600;
+        }}
+
+        .doc-article pre {{
+            background: var(--pico-background-color);
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 6px;
+            padding: 1rem;
+            overflow-x: auto;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }}
+
+        .doc-article code {{
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            background: var(--pico-background-color);
+            padding: 0.15rem 0.35rem;
+            border-radius: 4px;
+        }}
+
+        .doc-article blockquote {{
+            border-left: 4px solid var(--brand-primary);
+            padding-left: 1rem;
+            margin-left: 0;
+            color: var(--pico-muted-color);
         }}
 
         /* Code Browser */
@@ -1453,8 +1597,16 @@ def generate_html(
             position: relative;
         }}
 
+        .doc-raw-container {{
+            display: none;
+        }}
+
+        .doc-raw-container.active {{
+            display: block;
+        }}
+
         .code-view {{
-            max-height: 680px;
+            max-height: 700px;
             overflow-y: auto;
             overflow-x: auto;
         }}
@@ -1497,6 +1649,63 @@ def generate_html(
             overflow: visible;
         }}
 
+        /* Horizon Blueprint Grid */
+        .horizon-blueprint-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.25rem;
+            margin-top: 1rem;
+            border-top: 1px solid var(--pico-muted-border-color);
+            padding-top: 1rem;
+        }}
+
+        .blueprint-section h3 {{
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+        }}
+
+        .blueprint-list {{
+            padding-left: 1.25rem;
+            margin: 0;
+            font-size: 0.875rem;
+            color: var(--pico-muted-color);
+        }}
+
+        .blueprint-list li {{
+            margin-bottom: 0.25rem;
+        }}
+
+        .horizon-cta {{
+            margin-top: 1.25rem;
+            padding: 1.25rem;
+            background: var(--pico-background-color);
+            border-radius: var(--border-radius);
+            border: 1px solid var(--pico-muted-border-color);
+            text-align: center;
+        }}
+
+        .horizon-cta h3 {{
+            margin: 0 0 0.4rem 0;
+            font-size: 1.1rem;
+        }}
+
+        .horizon-cta p {{
+            margin: 0;
+            font-size: 0.875rem;
+            color: var(--pico-muted-color);
+        }}
+
+        .text-link-btn {{
+            background: transparent;
+            border: none;
+            color: var(--brand-primary);
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 0;
+            font-size: inherit;
+            font-family: inherit;
+        }}
+
         /* Explanatory Sections */
         .info-grid {{
             display: grid;
@@ -1528,7 +1737,7 @@ def generate_html(
 
         footer.site-footer {{
             border-top: 1px solid var(--pico-muted-border-color);
-            padding: 2.5rem 0;
+            padding: 2.5rem 2rem;
             text-align: center;
             font-size: 0.9rem;
             color: var(--pico-muted-color);
@@ -1543,13 +1752,17 @@ def generate_html(
         {css_light}
         {css_dark}
 
-        @media (max-width: 900px) {{
+        @media (max-width: 960px) {{
             .explorer-layout {{
                 grid-template-columns: 1fr;
+                padding: 0 1rem 3rem 1rem;
             }}
             .explorer-sidebar {{
                 position: static;
                 max-height: none;
+            }}
+            .nav-container, .hero {{
+                padding: 0 1rem;
             }}
             .hero h1 {{ font-size: 2rem; }}
             .meta-header {{ flex-direction: column; }}
@@ -1569,6 +1782,7 @@ def generate_html(
                 <a href="#explorer" class="nav-link">Code Explorer</a>
                 <a href="#principles" class="nav-link">Principles</a>
                 <a href="https://gitlab.com/renich/omni" target="_blank" rel="noopener" class="nav-link">GitLab</a>
+                <a href="https://github.com/renich/omni" target="_blank" rel="noopener" class="nav-link">GitHub</a>
                 <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
                     <span id="theme-icon">&#9790;</span>
                     <span id="theme-text">Dark</span>
@@ -1594,6 +1808,10 @@ def generate_html(
             <a href="https://git.openlat.dev/renich/omni" target="_blank" rel="noopener" class="mirror-pill">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
                 OpenLat Mirror
+            </a>
+            <a href="https://liberapay.com/Renich/donate" target="_blank" rel="noopener" class="mirror-pill donate">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+                Support on Liberapay
             </a>
         </div>
     </section>
@@ -1664,7 +1882,7 @@ def generate_html(
             Omni &mdash; Maintained by <a href="https://evalinux.com" target="_blank" rel="noopener">R&eacute;nich Bon &Cacute;iri&cacute;</a> and contributors.
         </p>
         <p style="font-size: 0.8rem; margin-top: 0.5rem;">
-            Open Source under standard free software licensing. Canonical source on <a href="https://gitlab.com/renich/omni" target="_blank" rel="noopener">GitLab</a>.
+            Licensed under the <a href="https://gitlab.com/renich/omni/-/blob/master/LICENSE" target="_blank" rel="noopener">GNU General Public License v3.0 or later</a>. Canonical upstream on <a href="https://gitlab.com/renich/omni" target="_blank" rel="noopener">GitLab</a>, mirrored on <a href="https://github.com/renich/omni" target="_blank" rel="noopener">GitHub</a> and <a href="https://git.openlat.dev/renich/omni" target="_blank" rel="noopener">OpenLat</a>.
         </p>
     </footer>
 
@@ -1688,6 +1906,25 @@ def generate_html(
                 }} else {{
                     window.location.hash = viewId;
                 }}
+            }}
+        }}
+
+        function setDocMode(docId, mode) {{
+            const renderedBox = document.getElementById('doc-rendered-' + docId);
+            const rawBox = document.getElementById('doc-raw-' + docId);
+            const btnDoc = document.getElementById('btn-mode-doc-' + docId);
+            const btnRaw = document.getElementById('btn-mode-raw-' + docId);
+
+            if (mode === 'doc') {{
+                if (renderedBox) renderedBox.classList.add('active');
+                if (rawBox) rawBox.classList.remove('active');
+                if (btnDoc) btnDoc.classList.add('active');
+                if (btnRaw) btnRaw.classList.remove('active');
+            }} else {{
+                if (renderedBox) renderedBox.classList.remove('active');
+                if (rawBox) rawBox.classList.add('active');
+                if (btnDoc) btnDoc.classList.remove('active');
+                if (btnRaw) btnRaw.classList.add('active');
             }}
         }}
 
