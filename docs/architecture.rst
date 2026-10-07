@@ -23,7 +23,8 @@ Directory Hierarchy
    ├── CHANGELOG.rst
    ├── docs/
    │   ├── architecture.rst
-   │   └── process.rst
+   │   ├── process.rst
+   │   └── standards.rst
    └── <language>/
        ├── README.rst
        ├── security.rst

@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
 Omni Static Site Generator
-Builds a fast, lightweight, self-contained documentation site and code browser.
-Supports light/dark theme, interactive language standard tabs, and Pygments syntax highlighting.
+Builds a fast, lightweight, self-contained multi-language documentation site and code browser.
+Features:
+- IDE-style File Explorer supporting arbitrary numbers of languages and editions
+- Dedicated Language Security Matrix & Threat Catalog per language
+- Interactive code browser with line numbers and Pygments syntax highlighting (friendly / dracula)
+- Light/Dark theme switching with system preference detection
+- Deep linking via URL hash routing
 """
 
 from __future__ import annotations
@@ -10,13 +15,16 @@ import os
 import sys
 from pathlib import Path
 import pygments
-from pygments.lexers import CLexer
+from pygments.lexers import CLexer, TextLexer
+from pygments.lexers.markup import RstLexer, MarkdownLexer
 from pygments.formatters import HtmlFormatter
 
-STANDARDS = [
+# Definition of verified languages and compendiums
+C_STANDARDS = [
     {
-        "id": "c23",
-        "name": "C23",
+        "id": "c-c23",
+        "name": "c23.c",
+        "tab_label": "C23",
         "title": "ISO/IEC 9899:2024 (C23)",
         "year": "2024",
         "file": "c/c23.c",
@@ -24,6 +32,7 @@ STANDARDS = [
         "summary": "Full ISO C23 standard reference with standard attributes, extended #embed parameters, constexpr, nullptr, typeof, typeof_unqual, _BitInt, binary literals, and digit separators.",
         "flags": "-std=c23 -Wall -Wextra -pedantic -Werror -pthread -lm",
         "keywords": "59 / 59 keywords saturated",
+        "security_anchors": ["SEC-VLA-01", "SEC-JMP-01", "SEC-BITFIELD-01", "SEC-ATOMIC-01"],
         "features": [
             "Extended #embed with limit, prefix, suffix, and if_empty parameters",
             "Standard attributes ([[nodiscard]], [[maybe_unused]], [[reproducible]], [[unsequenced]], [[noreturn]])",
@@ -35,8 +44,9 @@ STANDARDS = [
         ],
     },
     {
-        "id": "c17",
-        "name": "C17",
+        "id": "c-c17",
+        "name": "c17.c",
+        "tab_label": "C17",
         "title": "ISO/IEC 9899:2018 (C17)",
         "year": "2018",
         "file": "c/c17.c",
@@ -44,6 +54,7 @@ STANDARDS = [
         "summary": "Technical defect-resolution edition of C11. Enforces strict __STDC_VERSION__ == 201710L and adopts direct atomic initialization following Defect Report 485 deprecation of ATOMIC_VAR_INIT.",
         "flags": "-std=c17 -Wall -Wextra -pedantic -Werror -pthread -lm",
         "keywords": "Full ISO C17 keyword saturation",
+        "security_anchors": ["SEC-VLA-01", "SEC-JMP-01", "SEC-BITFIELD-01", "SEC-ATOMIC-01"],
         "features": [
             "Fixed standard macro __STDC_VERSION__ == 201710L",
             "Atomic initialization differentiation via direct initialization (DR 485)",
@@ -53,8 +64,9 @@ STANDARDS = [
         ],
     },
     {
-        "id": "c11",
-        "name": "C11",
+        "id": "c-c11",
+        "name": "c11.c",
+        "tab_label": "C11",
         "title": "ISO/IEC 9899:2011 (C11)",
         "year": "2011",
         "file": "c/c11.c",
@@ -62,6 +74,7 @@ STANDARDS = [
         "summary": "Major milestone introducing standardized multithreading, atomic operations, compile-time assertions, type-generic expressions, alignment queries, and unicode string literals.",
         "flags": "-std=c11 -Wall -Wextra -pedantic -Werror -pthread -lm",
         "keywords": "Full ISO C11 keyword saturation",
+        "security_anchors": ["SEC-VLA-01", "SEC-JMP-01", "SEC-BITFIELD-01", "SEC-ATOMIC-01"],
         "features": [
             "Atomics with stdatomic.h and memory order parameters (ATOMIC_VAR_INIT)",
             "Compile-time static assertions (_Static_assert)",
@@ -73,8 +86,9 @@ STANDARDS = [
         ],
     },
     {
-        "id": "c99",
-        "name": "C99",
+        "id": "c-c99",
+        "name": "c99.c",
+        "tab_label": "C99",
         "title": "ISO/IEC 9899:1999 (C99)",
         "year": "1999",
         "file": "c/c99.c",
@@ -82,6 +96,7 @@ STANDARDS = [
         "summary": "Landmark modernization standard introducing mixed declarations, variable-length arrays, designated initializers, compound literals, flexible array members, complex arithmetic, and exact-width integer types.",
         "flags": "-std=c99 -Wall -Wextra -pedantic -Werror -lm",
         "keywords": "Full ISO C99 keyword saturation",
+        "security_anchors": ["SEC-VLA-01", "SEC-JMP-01", "SEC-BITFIELD-01"],
         "features": [
             "Mixed declarations and statements; for-loop index declarations",
             "Variable-length arrays (VLAs) and flexible array members",
@@ -94,8 +109,9 @@ STANDARDS = [
         ],
     },
     {
-        "id": "c89",
-        "name": "C89/C90",
+        "id": "c-c89",
+        "name": "c89.c",
+        "tab_label": "C89/C90",
         "title": "ANSI X3.159-1989 / ISO/IEC 9899:1990",
         "year": "1989",
         "file": "c/c89.c",
@@ -103,6 +119,7 @@ STANDARDS = [
         "summary": "The original standardized ANSI/ISO C compendium. Exercises the complete foundational grammar under strict declarations-before-statements ordering, exact 32 keywords, and classic K&R compatibility.",
         "flags": "-std=c89 -Wall -Wextra -pedantic -Werror -lm",
         "keywords": "Exact 32 ANSI C keywords saturated",
+        "security_anchors": ["SEC-JMP-01", "SEC-C89-UNBOUNDED-01", "SEC-BITFIELD-01"],
         "features": [
             "Strict declaration-before-statement ordering across all lexical blocks",
             "Exact 32 keywords defined in ANSI X3.159-1989",
@@ -115,9 +132,244 @@ STANDARDS = [
     },
 ]
 
+# Security matrix anchors for C
+C_SECURITY_ANCHORS = [
+    {
+        "tag": "SEC-VLA-01",
+        "standards": "C99, C11, C17, C23",
+        "cwe": "CWE-400, CWE-770",
+        "hazard": "Stack exhaustion / Denial of Service via dynamic runtime dimensions",
+        "remediation": "Enforce bounded dynamic allocation (malloc) or fixed buffers with overflow checks",
+    },
+    {
+        "tag": "SEC-JMP-01",
+        "standards": "C89, C99, C11, C17, C23",
+        "cwe": "CWE-398",
+        "hazard": "Stack unwinding bypass, register clobbering, skipped resource cleanup",
+        "remediation": "Replace setjmp/longjmp with structured return codes and explicit status propagation",
+    },
+    {
+        "tag": "SEC-C89-UNBOUNDED-01",
+        "standards": "C89",
+        "cwe": "CWE-120",
+        "hazard": "Classic buffer overflow via unbounded string utilities (strcpy, strcat)",
+        "remediation": "Prohibit unbounded functions; enforce bounded copy or Annex K bounds-checking interfaces",
+    },
+    {
+        "tag": "SEC-BITFIELD-01",
+        "standards": "C89, C99, C11, C17, C23",
+        "cwe": "CWE-198",
+        "hazard": "Implementation-defined bitfield ordering, layout, and signedness ambiguity",
+        "remediation": "Avoid bitfields for IPC/protocols; use explicit bitwise masking over fixed-width types",
+    },
+    {
+        "tag": "SEC-ATOMIC-01",
+        "standards": "C11, C17, C23",
+        "cwe": "CWE-662",
+        "hazard": "Data races and instruction reordering via relaxed memory orders",
+        "remediation": "Default to sequential consistency (memory_order_seq_cst) unless formal models prove safety",
+    },
+]
+
+# Language Horizon targets for community contributions
+HORIZON_LANGUAGES = [
+    {
+        "id": "horizon-cpp",
+        "name": "C++",
+        "category": "Systems & Performance",
+        "standard_org": "ISO/IEC 14882",
+        "summary": "Multi-decade syntactic evolution spanning C++98, C++11, C++14, C++17, C++20, C++23, and upcoming C++26.",
+        "target_files": [
+            "cpp/cpp98.cpp", "cpp/cpp11.cpp", "cpp/cpp14.cpp",
+            "cpp/cpp17.cpp", "cpp/cpp20.cpp", "cpp/cpp23.cpp",
+            "cpp/security.rst", "cpp/README.rst",
+        ],
+        "target_flags": "-std=c++23 -Wall -Wextra -pedantic -Werror",
+        "key_features": [
+            "Templates, concepts, constraints, and compile-time evaluation (constexpr, consteval)",
+            "Move semantics, smart pointers, RAII, and memory model",
+            "Coroutines, ranges, modules, and explicit object parameters (deducing this)",
+            "Required security.rst catalog for pointer arithmetic, reinterpret_cast, and lifetime hazards",
+        ],
+    },
+    {
+        "id": "horizon-zig",
+        "name": "Zig",
+        "category": "Systems & Tooling",
+        "standard_org": "Zig Software Foundation",
+        "summary": "No hidden control flow, compile-time metaprogramming (comptime), explicit memory allocators, and optimal binary sizing.",
+        "target_files": [
+            "zig/zig013.zig", "zig/zig014.zig",
+            "zig/security.rst", "zig/README.rst",
+        ],
+        "target_flags": "zig build-exe -O ReleaseSafe",
+        "key_features": [
+            "Explicit allocators (std.mem.Allocator) and absence of global hidden heaps",
+            "comptime reflection, error unions (!T), and tagged unions",
+            "Struct-of-Arrays (std.MultiArrayList) and C ABI interoperability",
+            "Required security.rst catalog for @ptrCast, @alignCast, and unmanaged memory",
+        ],
+    },
+    {
+        "id": "horizon-crystal",
+        "name": "Crystal",
+        "category": "Compiled & High-Level",
+        "standard_org": "Manas.tech / Crystal Language",
+        "summary": "Ruby-inspired elegance compiled down to native machine code via LLVM. Features static type inference, fibers, channels, and macro metaprogramming.",
+        "target_files": [
+            "crystal/crystal1.cr",
+            "crystal/security.rst", "crystal/README.rst",
+        ],
+        "target_flags": "crystal build --release --warnings all",
+        "key_features": [
+            "Type unions and compile-time nil safety without runtime overhead",
+            "CSP-style concurrency with light fibers, channels, and execution contexts",
+            "Powerful compile-time AST macro expansion and native C library bindings (lib)",
+            "Required security.rst catalog for Pointer(T), LibC unsafe calls, and fiber race conditions",
+        ],
+    },
+    {
+        "id": "horizon-go",
+        "name": "Go",
+        "category": "Cloud & Infrastructure",
+        "standard_org": "Google / Go Authors",
+        "summary": "Expressive simplicity, communicative concurrency with channels and goroutines, and first-class type parameters (generics).",
+        "target_files": [
+            "go/go122.go",
+            "go/security.rst", "go/README.rst",
+        ],
+        "target_flags": "go build -race",
+        "key_features": [
+            "Goroutines, channels, and select statement concurrency",
+            "Consumer-side interface contracts and type parameter generics",
+            "Structured error handling and context propagation (context.Context)",
+            "Required security.rst catalog for unsafe.Pointer and data race edge cases",
+        ],
+    },
+    {
+        "id": "horizon-rust",
+        "name": "Rust",
+        "category": "Memory-Safe Systems",
+        "standard_org": "Rust Foundation",
+        "summary": "Fearless concurrency, zero-cost abstractions, and strict compile-time borrow checker preventing memory safety defects.",
+        "target_files": [
+            "rust/rust2018.rs", "rust/rust2021.rs", "rust/rust2024.rs",
+            "rust/security.rst", "rust/README.rst",
+        ],
+        "target_flags": "rustc --edition 2024 -D warnings",
+        "key_features": [
+            "Lifetimes, ownership, and borrow checking semantics",
+            "Pattern matching, algebraic data types (enums), and trait systems",
+            "Async/await and return position impl Trait in traits",
+            "Required security.rst catalog for unsafe blocks and raw pointer dereferencing",
+        ],
+    },
+    {
+        "id": "horizon-python",
+        "name": "Python",
+        "category": "Dynamic & Scripting",
+        "standard_org": "Python Software Foundation",
+        "summary": "Rich syntactic grammar featuring structural pattern matching, comprehensive type annotations, and asynchronous coroutines.",
+        "target_files": [
+            "python/py313.py",
+            "python/README.rst",
+        ],
+        "target_flags": "python3 -m py_compile",
+        "key_features": [
+            "Structural pattern matching (match / case) and union type operators (|)",
+            "Type parameter syntax (PEP 695) and exception groups",
+            "Async/await coroutines, comprehensions, and generators",
+            "Scalar state consumer executing all defined functions and expressions",
+        ],
+    },
+    {
+        "id": "horizon-bash",
+        "name": "Bash & POSIX",
+        "category": "Shell & Systems",
+        "standard_org": "IEEE Std 1003.1 / Free Software Foundation",
+        "summary": "Pure POSIX shell standards alongside GNU Bash 5.x systems orchestration grammar.",
+        "target_files": [
+            "bash/bash5.bash", "sh/sh2024.sh",
+            "bash/README.rst",
+        ],
+        "target_flags": "bash -n",
+        "key_features": [
+            "Associative arrays, parameter transformation, and arithmetic evaluation",
+            "Process substitutions, coprocesses, and safe execution headers (set -euo pipefail)",
+            "Strict POSIX compliance without non-standard extensions in sh/",
+            "Required security.rst catalog for word splitting, glob expansion, and eval hazards",
+        ],
+    },
+]
+
+# Global documentation files to highlight
+GLOBAL_DOCS = [
+    {
+        "id": "doc-standards",
+        "name": "standards.rst",
+        "title": "Language Standards and Roadmap",
+        "file": "docs/standards.rst",
+        "category": "Roadmap",
+        "summary": "Comprehensive matrix of verified language editions, toolchain baselines, and prospective target horizons.",
+    },
+    {
+        "id": "doc-architecture",
+        "name": "architecture.rst",
+        "title": "Repository Architecture Guide",
+        "file": "docs/architecture.rst",
+        "category": "Architecture",
+        "summary": "Structural design, directory layout conventions, and single-file self-containment invariants.",
+    },
+    {
+        "id": "doc-process",
+        "name": "process.rst",
+        "title": "Compendium Creation Process",
+        "file": "docs/process.rst",
+        "category": "Methodology",
+        "summary": "The 6-phase engineering lifecycle for authoring, verifying, and maintaining omni language reference files.",
+    },
+    {
+        "id": "doc-contributing",
+        "name": "CONTRIBUTING.rst",
+        "title": "Contributing Guidelines",
+        "file": "CONTRIBUTING.rst",
+        "category": "Governance",
+        "summary": "Contribution requirements, workflow steps, submission checklist, and verification standards.",
+    },
+    {
+        "id": "doc-agents",
+        "name": "AGENTS.md",
+        "title": "Omni AI Agent Directive",
+        "file": "AGENTS.md",
+        "category": "AI Directives",
+        "summary": "Non-negotiable invariants, scalar accumulator rules, and anti-hallucination guardrails for autonomous AI coding agents.",
+    },
+]
+
+
+def get_lexer_for_file(filepath: str):
+    if filepath.endswith(".c"):
+        return CLexer()
+    elif filepath.endswith(".rst"):
+        return RstLexer()
+    elif filepath.endswith(".md"):
+        return MarkdownLexer()
+    return TextLexer()
+
+
+def highlight_file(filepath: Path, formatter_light: HtmlFormatter, formatter_dark: HtmlFormatter) -> tuple[str, str, int, str]:
+    if not filepath.exists():
+        return ("", "", 0, "")
+    content = filepath.read_text(encoding="utf-8")
+    lines = len(content.splitlines())
+    lexer = get_lexer_for_file(str(filepath))
+    html_light = pygments.highlight(content, lexer, formatter_light)
+    html_dark = pygments.highlight(content, lexer, formatter_dark)
+    return (html_light, html_dark, lines, content)
+
+
 def build_site(repo_root: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    c_lexer = CLexer()
 
     formatter_light = HtmlFormatter(style="friendly", nowrap=False, linenos="table", cssclass="highlight-light")
     formatter_dark = HtmlFormatter(style="dracula", nowrap=False, linenos="table", cssclass="highlight-dark")
@@ -125,65 +377,165 @@ def build_site(repo_root: Path, output_dir: Path) -> None:
     css_light = formatter_light.get_style_defs(".highlight-light")
     css_dark = formatter_dark.get_style_defs(".highlight-dark")
 
-    standards_data = []
-    for item in STANDARDS:
-        source_path = repo_root / item["file"]
-        if not source_path.exists():
-            print(f"Warning: {source_path} not found, skipping.")
-            continue
-        code_content = source_path.read_text(encoding="utf-8")
-        line_count = len(code_content.splitlines())
-
-        html_light = pygments.highlight(code_content, c_lexer, formatter_light)
-        html_dark = pygments.highlight(code_content, c_lexer, formatter_dark)
-
-        standards_data.append({
+    # 1. Process C standards
+    processed_c_standards = []
+    for item in C_STANDARDS:
+        src = repo_root / item["file"]
+        h_light, h_dark, lines, raw = highlight_file(src, formatter_light, formatter_dark)
+        processed_c_standards.append({
             **item,
-            "line_count": line_count,
-            "raw_code": code_content,
-            "html_light": html_light,
-            "html_dark": html_dark,
+            "line_count": lines,
+            "html_light": h_light,
+            "html_dark": h_dark,
+            "raw_code": raw,
         })
 
-    html_content = generate_html(standards_data, css_light, css_dark)
+    # 2. Process C security and documentation
+    c_sec_path = repo_root / "c/security.rst"
+    c_sec_light, c_sec_dark, c_sec_lines, c_sec_raw = highlight_file(c_sec_path, formatter_light, formatter_dark)
+    c_security_data = {
+        "id": "c-security",
+        "name": "security.rst",
+        "title": "C Language Security and Hazardous Feature Matrix",
+        "file": "c/security.rst",
+        "line_count": c_sec_lines,
+        "html_light": c_sec_light,
+        "html_dark": c_sec_dark,
+        "raw_code": c_sec_raw,
+        "anchors": C_SECURITY_ANCHORS,
+    }
+
+    c_readme_path = repo_root / "c/README.rst"
+    c_readme_light, c_readme_dark, c_readme_lines, c_readme_raw = highlight_file(c_readme_path, formatter_light, formatter_dark)
+    c_readme_data = {
+        "id": "c-readme",
+        "name": "README.rst",
+        "title": "C Reference Implementations and Standards Matrix",
+        "file": "c/README.rst",
+        "line_count": c_readme_lines,
+        "html_light": c_readme_light,
+        "html_dark": c_readme_dark,
+        "raw_code": c_readme_raw,
+    }
+
+    # 3. Process Global Documentation
+    processed_global_docs = []
+    for doc in GLOBAL_DOCS:
+        doc_src = repo_root / doc["file"]
+        h_light, h_dark, lines, raw = highlight_file(doc_src, formatter_light, formatter_dark)
+        processed_global_docs.append({
+            **doc,
+            "line_count": lines,
+            "html_light": h_light,
+            "html_dark": h_dark,
+            "raw_code": raw,
+        })
+
+    html_content = generate_html(
+        c_standards=processed_c_standards,
+        c_security=c_security_data,
+        c_readme=c_readme_data,
+        horizon_languages=HORIZON_LANGUAGES,
+        global_docs=processed_global_docs,
+        css_light=css_light,
+        css_dark=css_dark,
+    )
+
     output_file = output_dir / "index.html"
     output_file.write_text(html_content, encoding="utf-8")
     print(f"==> Omni site built successfully: {output_file} ({output_file.stat().st_size:,} bytes)")
 
 
-def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
-    tabs_html = []
+def generate_html(
+    c_standards: list[dict],
+    c_security: dict,
+    c_readme: dict,
+    horizon_languages: list[dict],
+    global_docs: list[dict],
+    css_light: str,
+    css_dark: str,
+) -> str:
+    # Sidebar tree generation
+    c_items_html = []
+    for std in c_standards:
+        c_items_html.append(f"""
+        <button class="nav-tree-item" id="btn-{std['id']}" onclick="switchView('{std['id']}')">
+            <span class="file-icon std-icon">&lambda;</span>
+            <span class="file-name">{std['name']}</span>
+            <span class="file-badge">{std['year']}</span>
+        </button>
+        """)
+
+    c_items_html.append(f"""
+    <button class="nav-tree-item nav-security-item" id="btn-{c_security['id']}" onclick="switchView('{c_security['id']}')">
+        <span class="file-icon sec-icon">&#128737;</span>
+        <span class="file-name">{c_security['name']}</span>
+        <span class="file-badge sec-badge">Threat Model</span>
+    </button>
+    <button class="nav-tree-item" id="btn-{c_readme['id']}" onclick="switchView('{c_readme['id']}')">
+        <span class="file-icon doc-icon">&#128196;</span>
+        <span class="file-name">{c_readme['name']}</span>
+        <span class="file-badge">Overview</span>
+    </button>
+    """)
+    c_tree_str = "\n".join(c_items_html)
+
+    horizon_items_html = []
+    for h in horizon_languages:
+        horizon_items_html.append(f"""
+        <button class="nav-tree-item horizon-item" id="btn-{h['id']}" onclick="switchView('{h['id']}')">
+            <span class="file-icon horizon-icon">&#9671;</span>
+            <span class="file-name">{h['name']}</span>
+            <span class="file-badge horizon-badge">Planned</span>
+        </button>
+        """)
+    horizon_tree_str = "\n".join(horizon_items_html)
+
+    docs_items_html = []
+    for d in global_docs:
+        docs_items_html.append(f"""
+        <button class="nav-tree-item" id="btn-{d['id']}" onclick="switchView('{d['id']}')">
+            <span class="file-icon doc-icon">&#128220;</span>
+            <span class="file-name">{d['name']}</span>
+            <span class="file-badge">{d['category']}</span>
+        </button>
+        """)
+    docs_tree_str = "\n".join(docs_items_html)
+
+    # Panels generation
     panels_html = []
 
-    for i, std in enumerate(standards):
-        active_class = "active" if i == 0 else ""
-        aria_selected = "true" if i == 0 else "false"
-        tab_button = f"""
-        <button class="std-tab {active_class}" role="tab" id="tab-{std['id']}" aria-selected="{aria_selected}" aria-controls="panel-{std['id']}" onclick="switchStandard('{std['id']}')">
-            <span class="tab-name">{std['name']}</span>
-            <span class="tab-badge">{std['year']}</span>
-        </button>
-        """
-        tabs_html.append(tab_button)
-
+    # 1. C Standard Panels
+    for std in c_standards:
         features_li = "".join(f"<li>{feat}</li>" for feat in std["features"])
+        anchors_pills = "".join(
+            f'<button class="anchor-pill" onclick="switchView(\'c-security\')">{anchor}</button> '
+            for anchor in std.get("security_anchors", [])
+        )
 
         panel = f"""
-        <div class="std-panel {active_class}" role="tabpanel" id="panel-{std['id']}" aria-labelledby="tab-{std['id']}">
+        <div class="view-panel" id="panel-{std['id']}">
             <div class="panel-meta">
                 <div class="meta-header">
                     <div>
-                        <span class="badge-pill">{std['badge']}</span>
+                        <div class="meta-breadcrumbs">
+                            <span class="crumb">omni</span>
+                            <span class="crumb-sep">/</span>
+                            <span class="crumb">c</span>
+                            <span class="crumb-sep">/</span>
+                            <span class="crumb current">{std['name']}</span>
+                            <span class="badge-pill">{std['badge']}</span>
+                        </div>
                         <h2 class="meta-title">{std['title']}</h2>
                     </div>
                     <div class="meta-actions">
-                        <button class="btn-copy" onclick="copyCode('{std['id']}')" title="Copy code to clipboard">
-                            <svg class="icon-copy" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            <span id="copy-text-{std['id']}">Copy Code</span>
+                        <button class="btn-action btn-copy" onclick="copyContent('{std['id']}')" title="Copy code">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            <span id="copy-text-{std['id']}">Copy</span>
                         </button>
-                        <a href="https://gitlab.com/renich/omni/-/blob/master/{std['file']}" target="_blank" rel="noopener" class="btn-source" title="View raw source on GitLab">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                            Source
+                        <a href="https://gitlab.com/renich/omni/-/blob/master/{std['file']}" target="_blank" rel="noopener" class="btn-action btn-link">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                            GitLab
                         </a>
                     </div>
                 </div>
@@ -194,12 +546,18 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
                         <code class="cmd-code">{std['flags']}</code>
                     </div>
                     <div class="meta-card">
-                        <span class="card-label">Metric</span>
+                        <span class="card-label">Lexical Metrics</span>
                         <span class="card-value">{std['line_count']} lines &bull; {std['keywords']}</span>
+                    </div>
+                    <div class="meta-card">
+                        <span class="card-label">Threat Model Anchors</span>
+                        <div class="anchors-container">
+                            {anchors_pills}
+                        </div>
                     </div>
                 </div>
                 <details class="features-details">
-                    <summary>Standard Capabilities Showcase</summary>
+                    <summary>Standard Capabilities Showcase ({len(std['features'])} items)</summary>
                     <ul class="features-list">
                         {features_li}
                     </ul>
@@ -213,13 +571,253 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
                 <div class="code-view code-dark">
                     {std['html_dark']}
                 </div>
-                <textarea id="raw-code-{std['id']}" style="display:none;" readonly>{std['raw_code']}</textarea>
+                <textarea id="raw-{std['id']}" style="display:none;" readonly>{std['raw_code']}</textarea>
             </div>
         </div>
         """
         panels_html.append(panel)
 
-    tabs_str = "\n".join(tabs_html)
+    # 2. C Security Threat Model Panel
+    sec_rows = "".join(f"""
+    <tr>
+        <td><code class="anchor-code">{anchor['tag']}</code></td>
+        <td>{anchor['standards']}</td>
+        <td>{anchor['hazard']} <br><small class="cwe-tag">{anchor['cwe']}</small></td>
+        <td>{anchor['remediation']}</td>
+    </tr>
+    """ for anchor in c_security["anchors"])
+
+    sec_panel = f"""
+    <div class="view-panel" id="panel-{c_security['id']}">
+        <div class="panel-meta security-banner">
+            <div class="meta-header">
+                <div>
+                    <div class="meta-breadcrumbs">
+                        <span class="crumb">omni</span>
+                        <span class="crumb-sep">/</span>
+                        <span class="crumb">c</span>
+                        <span class="crumb-sep">/</span>
+                        <span class="crumb current">{c_security['name']}</span>
+                        <span class="badge-pill sec-pill">Security &bull; Threat Catalog</span>
+                    </div>
+                    <h2 class="meta-title">&#128737; {c_security['title']}</h2>
+                </div>
+                <div class="meta-actions">
+                    <button class="btn-action btn-copy" onclick="copyContent('{c_security['id']}')">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span id="copy-text-{c_security['id']}">Copy</span>
+                    </button>
+                    <a href="https://gitlab.com/renich/omni/-/blob/master/{c_security['file']}" target="_blank" rel="noopener" class="btn-action btn-link">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                        GitLab
+                    </a>
+                </div>
+            </div>
+            <p class="meta-desc">
+                The <code>omni</code> C suite intentionally exercises historical, implementation-defined, and memory-hazardous constructs to achieve 100% grammar saturation. This threat model catalogs inline security anchors (<code>[!SECURITY-NOTE: ID]</code>), mapping them to formal CWE classifications and production mitigations.
+            </p>
+
+            <div class="security-table-wrapper">
+                <table class="sec-matrix-table">
+                    <thead>
+                        <tr>
+                            <th>Anchor Tag</th>
+                            <th>Standards</th>
+                            <th>Vulnerability &amp; CWE</th>
+                            <th>Defensive Mitigation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {sec_rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="code-container">
+            <div class="code-view code-light">
+                {c_security['html_light']}
+            </div>
+            <div class="code-view code-dark">
+                {c_security['html_dark']}
+            </div>
+            <textarea id="raw-{c_security['id']}" style="display:none;" readonly>{c_security['raw_code']}</textarea>
+        </div>
+    </div>
+    """
+    panels_html.append(sec_panel)
+
+    # 3. C README Panel
+    readme_panel = f"""
+    <div class="view-panel" id="panel-{c_readme['id']}">
+        <div class="panel-meta">
+            <div class="meta-header">
+                <div>
+                    <div class="meta-breadcrumbs">
+                        <span class="crumb">omni</span>
+                        <span class="crumb-sep">/</span>
+                        <span class="crumb">c</span>
+                        <span class="crumb-sep">/</span>
+                        <span class="crumb current">{c_readme['name']}</span>
+                        <span class="badge-pill">Language Guide</span>
+                    </div>
+                    <h2 class="meta-title">{c_readme['title']}</h2>
+                </div>
+                <div class="meta-actions">
+                    <button class="btn-action btn-copy" onclick="copyContent('{c_readme['id']}')">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span id="copy-text-{c_readme['id']}">Copy</span>
+                    </button>
+                    <a href="https://gitlab.com/renich/omni/-/blob/master/{c_readme['file']}" target="_blank" rel="noopener" class="btn-action btn-link">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                        GitLab
+                    </a>
+                </div>
+            </div>
+            <p class="meta-desc">
+                C Language reference suite overview, compiler baselines, enforced warning flags, and per-standard distinguishing features.
+            </p>
+        </div>
+
+        <div class="code-container">
+            <div class="code-view code-light">
+                {c_readme['html_light']}
+            </div>
+            <div class="code-view code-dark">
+                {c_readme['html_dark']}
+            </div>
+            <textarea id="raw-{c_readme['id']}" style="display:none;" readonly>{c_readme['raw_code']}</textarea>
+        </div>
+    </div>
+    """
+    panels_html.append(readme_panel)
+
+    # 4. Global Docs Panels
+    for doc in global_docs:
+        doc_panel = f"""
+        <div class="view-panel" id="panel-{doc['id']}">
+            <div class="panel-meta">
+                <div class="meta-header">
+                    <div>
+                        <div class="meta-breadcrumbs">
+                            <span class="crumb">omni</span>
+                            <span class="crumb-sep">/</span>
+                            <span class="crumb">docs</span>
+                            <span class="crumb-sep">/</span>
+                            <span class="crumb current">{doc['name']}</span>
+                            <span class="badge-pill">{doc['category']}</span>
+                        </div>
+                        <h2 class="meta-title">{doc['title']}</h2>
+                    </div>
+                    <div class="meta-actions">
+                        <button class="btn-action btn-copy" onclick="copyContent('{doc['id']}')">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            <span id="copy-text-{doc['id']}">Copy</span>
+                        </button>
+                        <a href="https://gitlab.com/renich/omni/-/blob/master/{doc['file']}" target="_blank" rel="noopener" class="btn-action btn-link">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                            GitLab
+                        </a>
+                    </div>
+                </div>
+                <p class="meta-desc">{doc['summary']}</p>
+                <div class="meta-grid">
+                    <div class="meta-card">
+                        <span class="card-label">File Path</span>
+                        <code class="cmd-code">{doc['file']}</code>
+                    </div>
+                    <div class="meta-card">
+                        <span class="card-label">Document Size</span>
+                        <span class="card-value">{doc['line_count']} lines</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="code-container">
+                <div class="code-view code-light">
+                    {doc['html_light']}
+                </div>
+                <div class="code-view code-dark">
+                    {doc['html_dark']}
+                </div>
+                <textarea id="raw-{doc['id']}" style="display:none;" readonly>{doc['raw_code']}</textarea>
+            </div>
+        </div>
+        """
+        panels_html.append(doc_panel)
+
+    # 5. Horizon Language Blueprint Panels
+    for h in horizon_languages:
+        target_files_li = "".join(f"<li><code>{f}</code></li>" for f in h["target_files"])
+        features_li = "".join(f"<li>{feat}</li>" for feat in h["key_features"])
+
+        horizon_panel = f"""
+        <div class="view-panel" id="panel-{h['id']}">
+            <div class="panel-meta horizon-hero-card">
+                <div class="meta-header">
+                    <div>
+                        <div class="meta-breadcrumbs">
+                            <span class="crumb">omni</span>
+                            <span class="crumb-sep">/</span>
+                            <span class="crumb">horizon</span>
+                            <span class="crumb-sep">/</span>
+                            <span class="crumb current">{h['name']}</span>
+                            <span class="badge-pill horizon-pill">Roadmap Target</span>
+                        </div>
+                        <h2 class="meta-title">&#9671; {h['name']} Target Specification</h2>
+                    </div>
+                    <div class="meta-actions">
+                        <a href="https://gitlab.com/renich/omni/-/blob/master/CONTRIBUTING.rst" target="_blank" rel="noopener" class="btn-action btn-contribute">
+                            Contribute {h['name']}
+                        </a>
+                    </div>
+                </div>
+                <p class="meta-desc">{h['summary']}</p>
+
+                <div class="meta-grid">
+                    <div class="meta-card">
+                        <span class="card-label">Standard Body</span>
+                        <span class="card-value">{h['standard_org']}</span>
+                    </div>
+                    <div class="meta-card">
+                        <span class="card-label">Target Compiler Flags</span>
+                        <code class="cmd-code">{h['target_flags']}</code>
+                    </div>
+                    <div class="meta-card">
+                        <span class="card-label">Required Security Catalog</span>
+                        <span class="card-value"><code>{h['name'].lower()}/security.rst</code> (Mandatory)</span>
+                    </div>
+                </div>
+
+                <div class="horizon-blueprint-grid">
+                    <div class="blueprint-section">
+                        <h3>Planned Reference Files</h3>
+                        <ul class="blueprint-list">
+                            {target_files_li}
+                        </ul>
+                    </div>
+                    <div class="blueprint-section">
+                        <h3>Language Features to Saturate</h3>
+                        <ul class="blueprint-list">
+                            {features_li}
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="horizon-cta">
+                    <h3>Ready to Author the {h['name']} Compendium?</h3>
+                    <p>
+                        Review the 6-phase engineering lifecycle in the 
+                        <button class="text-link-btn" onclick="switchView('doc-process')">Compendium Creation Process</button>
+                        and check out the
+                        <button class="text-link-btn" onclick="switchView('doc-contributing')">Contributing Guide</button>.
+                    </p>
+                </div>
+            </div>
+        </div>
+        """
+        panels_html.append(horizon_panel)
+
     panels_str = "\n".join(panels_html)
 
     return f"""<!DOCTYPE html>
@@ -228,7 +826,7 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Omni &mdash; Executable Language Compendiums</title>
-    <meta name="description" content="The smallest piece of code that showcases the entirety of a programming language. Self-contained, zero-warning executable Rosetta stone.">
+    <meta name="description" content="The smallest piece of code that showcases the entirety of a programming language. Self-contained, zero-warning executable Rosetta stone with threat modeling.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&omega;</text></svg>">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
@@ -237,6 +835,9 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
             --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
             --brand-primary: #10b981;
             --brand-primary-hover: #059669;
+            --brand-sec: #e11d48;
+            --brand-sec-hover: #be123c;
+            --brand-horizon: #8b5cf6;
             --code-bg-light: #ffffff;
             --code-bg-dark: #0d1117;
             --border-radius: 8px;
@@ -251,7 +852,7 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
 
         header.site-header {{
             border-bottom: 1px solid var(--pico-muted-border-color);
-            padding: 1rem 0;
+            padding: 0.85rem 0;
             background: var(--pico-background-color);
             position: sticky;
             top: 0;
@@ -263,7 +864,7 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
             display: flex;
             justify-content: space-between;
             align-items: center;
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 0 1.5rem;
         }}
@@ -282,12 +883,12 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 34px;
-            height: 34px;
+            width: 32px;
+            height: 32px;
             background: var(--brand-primary);
             color: #ffffff;
             border-radius: 8px;
-            font-size: 1.25rem;
+            font-size: 1.2rem;
             font-weight: 800;
         }}
 
@@ -313,7 +914,7 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
             background: transparent;
             border: 1px solid var(--pico-muted-border-color);
             color: var(--pico-color);
-            padding: 0.4rem 0.75rem;
+            padding: 0.35rem 0.7rem;
             border-radius: var(--border-radius);
             cursor: pointer;
             display: flex;
@@ -323,41 +924,41 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
         }}
 
         .hero {{
-            max-width: 1200px;
-            margin: 3rem auto 2rem auto;
+            max-width: 1400px;
+            margin: 2.5rem auto 1.5rem auto;
             padding: 0 1.5rem;
             text-align: center;
         }}
 
         .hero h1 {{
-            font-size: 2.75rem;
+            font-size: 2.5rem;
             font-weight: 800;
             letter-spacing: -0.03em;
-            margin-bottom: 1rem;
+            margin-bottom: 0.75rem;
         }}
 
         .hero-lead {{
-            font-size: 1.25rem;
+            font-size: 1.15rem;
             color: var(--pico-muted-color);
             max-width: 780px;
-            margin: 0 auto 2rem auto;
+            margin: 0 auto 1.5rem auto;
         }}
 
         .repo-mirrors {{
             display: flex;
             justify-content: center;
-            gap: 1rem;
+            gap: 0.75rem;
             flex-wrap: wrap;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
         }}
 
         .mirror-pill {{
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.4rem 0.9rem;
+            gap: 0.45rem;
+            padding: 0.35rem 0.8rem;
             border-radius: 20px;
-            font-size: 0.85rem;
+            font-size: 0.825rem;
             text-decoration: none;
             border: 1px solid var(--pico-muted-border-color);
             color: var(--pico-color);
@@ -376,63 +977,152 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
             font-weight: 600;
         }}
 
-        .main-content {{
-            max-width: 1200px;
+        /* IDE-Style Split Explorer Layout */
+        .explorer-layout {{
+            display: grid;
+            grid-template-columns: 290px 1fr;
+            gap: 1.5rem;
+            align-items: start;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 0 1.5rem 4rem 1.5rem;
         }}
 
-        /* Standards navigation */
-        .std-nav {{
-            display: flex;
-            gap: 0.5rem;
-            border-bottom: 2px solid var(--pico-muted-border-color);
-            margin-bottom: 1.5rem;
-            overflow-x: auto;
-            padding-bottom: 0.25rem;
+        /* Explorer Sidebar */
+        .explorer-sidebar {{
+            background: var(--pico-card-background-color);
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: var(--border-radius);
+            padding: 1rem;
+            position: sticky;
+            top: 5rem;
+            max-height: calc(100vh - 6.5rem);
+            overflow-y: auto;
         }}
 
-        .std-tab {{
-            background: transparent;
-            border: none;
-            border-bottom: 3px solid transparent;
-            padding: 0.75rem 1.25rem;
-            cursor: pointer;
+        .sidebar-section {{
+            margin-bottom: 1.25rem;
+        }}
+
+        .sidebar-section:last-child {{
+            margin-bottom: 0;
+        }}
+
+        .section-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
             color: var(--pico-muted-color);
-            font-weight: 600;
-            font-size: 1rem;
+            font-weight: 700;
+            padding: 0.25rem 0.5rem 0.5rem 0.5rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+            margin-bottom: 0.5rem;
+        }}
+
+        .status-dot {{
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--brand-primary);
+            margin-right: 0.35rem;
+        }}
+
+        .status-dot.horizon {{
+            background: var(--brand-horizon);
+        }}
+
+        .nav-tree-item {{
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            border-radius: var(--border-radius) var(--border-radius) 0 0;
+            width: 100%;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            padding: 0.45rem 0.6rem;
+            cursor: pointer;
+            color: var(--pico-color);
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-align: left;
             transition: all 0.15s ease;
+            gap: 0.5rem;
+            margin-bottom: 0.15rem;
         }}
 
-        .std-tab:hover {{
-            color: var(--pico-color);
-            background: var(--pico-card-background-color);
-        }}
-
-        .std-tab.active {{
-            color: var(--brand-primary);
-            border-bottom-color: var(--brand-primary);
-            background: var(--pico-card-background-color);
-        }}
-
-        .tab-badge {{
-            font-size: 0.75rem;
-            padding: 0.15rem 0.45rem;
-            border-radius: 12px;
+        .nav-tree-item:hover {{
             background: var(--pico-muted-border-color);
-            color: var(--pico-color);
         }}
 
-        /* Panel content */
-        .std-panel {{
+        .nav-tree-item.active {{
+            background: var(--brand-primary);
+            color: #ffffff;
+            font-weight: 600;
+        }}
+
+        .nav-tree-item.active .file-badge {{
+            background: rgba(0, 0, 0, 0.25);
+            color: #ffffff;
+        }}
+
+        .nav-tree-item.active .file-icon {{
+            color: #ffffff;
+        }}
+
+        .file-icon {{
+            font-size: 0.95rem;
+            opacity: 0.8;
+            width: 18px;
+            text-align: center;
+        }}
+
+        .sec-icon {{
+            color: var(--brand-sec);
+        }}
+
+        .horizon-icon {{
+            color: var(--brand-horizon);
+        }}
+
+        .file-name {{
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        .file-badge {{
+            font-size: 0.7rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 10px;
+            background: var(--pico-muted-border-color);
+            color: var(--pico-muted-color);
+            font-weight: 600;
+        }}
+
+        .sec-badge {{
+            background: rgba(225, 29, 72, 0.15);
+            color: var(--brand-sec);
+        }}
+
+        .horizon-badge {{
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--brand-horizon);
+        }}
+
+        /* Workspace Main Pane */
+        .workspace {{
+            min-width: 0;
+        }}
+
+        .view-panel {{
             display: none;
         }}
 
-        .std-panel.active {{
+        .view-panel.active {{
             display: block;
         }}
 
@@ -444,6 +1134,14 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
             margin-bottom: 1.5rem;
         }}
 
+        .security-banner {{
+            border-left: 4px solid var(--brand-sec);
+        }}
+
+        .horizon-hero-card {{
+            border-left: 4px solid var(--brand-horizon);
+        }}
+
         .meta-header {{
             display: flex;
             justify-content: space-between;
@@ -452,14 +1150,46 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
             margin-bottom: 0.75rem;
         }}
 
+        .meta-breadcrumbs {{
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.8rem;
+            color: var(--pico-muted-color);
+            margin-bottom: 0.4rem;
+            font-family: var(--font-mono);
+        }}
+
+        .crumb-sep {{
+            opacity: 0.5;
+        }}
+
+        .crumb.current {{
+            color: var(--pico-color);
+            font-weight: 600;
+        }}
+
         .badge-pill {{
             display: inline-block;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.05em;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            background: rgba(16, 185, 129, 0.12);
             color: var(--brand-primary);
-            margin-bottom: 0.25rem;
+            margin-left: 0.5rem;
+        }}
+
+        .badge-pill.sec-pill {{
+            background: rgba(225, 29, 72, 0.12);
+            color: var(--brand-sec);
+        }}
+
+        .badge-pill.horizon-pill {{
+            background: rgba(139, 92, 246, 0.12);
+            color: var(--brand-horizon);
         }}
 
         .meta-title {{
@@ -473,82 +1203,115 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
             gap: 0.5rem;
         }}
 
-        .btn-copy, .btn-source {{
+        .btn-action {{
             display: inline-flex;
             align-items: center;
             gap: 0.4rem;
-            padding: 0.4rem 0.8rem;
-            font-size: 0.85rem;
+            padding: 0.35rem 0.75rem;
+            font-size: 0.825rem;
             border-radius: var(--border-radius);
             text-decoration: none;
             cursor: pointer;
-            font-weight: 500;
+            font-weight: 600;
+            border: 1px solid var(--pico-muted-border-color);
+            background: transparent;
+            color: var(--pico-color);
+            transition: all 0.15s ease;
         }}
 
         .btn-copy {{
             background: var(--brand-primary);
             color: #ffffff;
-            border: none;
-            transition: background 0.15s ease;
+            border-color: var(--brand-primary);
         }}
 
         .btn-copy:hover {{
             background: var(--brand-primary-hover);
+            border-color: var(--brand-primary-hover);
         }}
 
-        .btn-source {{
-            background: transparent;
-            border: 1px solid var(--pico-muted-border-color);
-            color: var(--pico-color);
+        .btn-contribute {{
+            background: var(--brand-horizon);
+            color: #ffffff;
+            border-color: var(--brand-horizon);
         }}
 
-        .btn-source:hover {{
-            background: var(--pico-card-background-color);
+        .btn-contribute:hover {{
+            background: #7c3aed;
+        }}
+
+        .btn-link:hover {{
+            background: var(--pico-muted-border-color);
         }}
 
         .meta-desc {{
             color: var(--pico-muted-color);
             margin-bottom: 1rem;
-            font-size: 1rem;
+            font-size: 0.95rem;
         }}
 
         .meta-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 0.85rem;
             margin-bottom: 1rem;
         }}
 
         .meta-card {{
             background: var(--pico-background-color);
-            padding: 0.75rem 1rem;
+            padding: 0.7rem 0.9rem;
             border-radius: var(--border-radius);
             border: 1px solid var(--pico-muted-border-color);
             display: flex;
             flex-direction: column;
-            gap: 0.25rem;
+            gap: 0.2rem;
         }}
 
         .card-label {{
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             text-transform: uppercase;
-            font-weight: 600;
+            font-weight: 700;
             color: var(--pico-muted-color);
             letter-spacing: 0.05em;
         }}
 
         .card-value {{
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             font-weight: 600;
         }}
 
         .cmd-code {{
             font-family: var(--font-mono);
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             word-break: break-all;
             background: transparent;
             padding: 0;
             color: var(--brand-primary);
+        }}
+
+        .anchors-container {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            margin-top: 0.2rem;
+        }}
+
+        .anchor-pill {{
+            background: rgba(225, 29, 72, 0.12);
+            color: var(--brand-sec);
+            border: 1px solid rgba(225, 29, 72, 0.3);
+            border-radius: 4px;
+            padding: 0.1rem 0.4rem;
+            font-size: 0.725rem;
+            font-family: var(--font-mono);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }}
+
+        .anchor-pill:hover {{
+            background: var(--brand-sec);
+            color: #ffffff;
         }}
 
         .features-details {{
@@ -560,19 +1323,123 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
         .features-details summary {{
             cursor: pointer;
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.875rem;
             color: var(--pico-color);
         }}
 
         .features-list {{
-            margin: 0.75rem 0 0 0;
+            margin: 0.65rem 0 0 0;
             padding-left: 1.5rem;
-            font-size: 0.9rem;
+            font-size: 0.875rem;
             color: var(--pico-muted-color);
         }}
 
         .features-list li {{
-            margin-bottom: 0.35rem;
+            margin-bottom: 0.3rem;
+        }}
+
+        /* Security Table */
+        .security-table-wrapper {{
+            overflow-x: auto;
+            margin-top: 1rem;
+        }}
+
+        .sec-matrix-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin: 0;
+        }}
+
+        .sec-matrix-table th {{
+            background: var(--pico-background-color);
+            padding: 0.6rem 0.8rem;
+            text-align: left;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--pico-muted-color);
+            border-bottom: 1px solid var(--pico-muted-border-color);
+        }}
+
+        .sec-matrix-table td {{
+            padding: 0.65rem 0.8rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+            vertical-align: top;
+        }}
+
+        .anchor-code {{
+            font-family: var(--font-mono);
+            font-weight: 700;
+            color: var(--brand-sec);
+            background: rgba(225, 29, 72, 0.1);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }}
+
+        .cwe-tag {{
+            color: var(--pico-muted-color);
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+        }}
+
+        /* Horizon Blueprint Grid */
+        .horizon-blueprint-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+            border-top: 1px solid var(--pico-muted-border-color);
+            padding-top: 1rem;
+        }}
+
+        .blueprint-section h3 {{
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+        }}
+
+        .blueprint-list {{
+            padding-left: 1.25rem;
+            margin: 0;
+            font-size: 0.875rem;
+            color: var(--pico-muted-color);
+        }}
+
+        .blueprint-list li {{
+            margin-bottom: 0.25rem;
+        }}
+
+        .horizon-cta {{
+            margin-top: 1.25rem;
+            padding: 1rem;
+            background: var(--pico-background-color);
+            border-radius: var(--border-radius);
+            border: 1px solid var(--pico-muted-border-color);
+            text-align: center;
+        }}
+
+        .horizon-cta h3 {{
+            margin: 0 0 0.4rem 0;
+            font-size: 1.1rem;
+        }}
+
+        .horizon-cta p {{
+            margin: 0;
+            font-size: 0.875rem;
+            color: var(--pico-muted-color);
+        }}
+
+        .text-link-btn {{
+            background: transparent;
+            border: none;
+            color: var(--brand-primary);
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 0;
+            font-size: inherit;
+            font-family: inherit;
         }}
 
         /* Code Browser */
@@ -587,7 +1454,7 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
         }}
 
         .code-view {{
-            max-height: 650px;
+            max-height: 680px;
             overflow-y: auto;
             overflow-x: auto;
         }}
@@ -608,7 +1475,7 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
 
         .code-container td.linenos {{
             user-select: none;
-            padding: 0.75rem 0.5rem 0.75rem 0.75rem;
+            padding: 0.65rem 0.5rem 0.65rem 0.75rem;
             text-align: right;
             border-right: 1px solid var(--pico-muted-border-color);
             color: var(--pico-muted-color);
@@ -618,7 +1485,7 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
         }}
 
         .code-container td.code {{
-            padding: 0.75rem 1rem;
+            padding: 0.65rem 1rem;
             vertical-align: top;
         }}
 
@@ -635,7 +1502,7 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 1.5rem;
-            margin: 3.5rem 0;
+            margin: 3.5rem 0 1.5rem 0;
         }}
 
         .info-card {{
@@ -647,7 +1514,7 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
 
         .info-card h3 {{
             margin-top: 0;
-            font-size: 1.25rem;
+            font-size: 1.15rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
@@ -655,7 +1522,7 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
 
         .info-card p {{
             color: var(--pico-muted-color);
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             margin-bottom: 0;
         }}
 
@@ -676,11 +1543,18 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
         {css_light}
         {css_dark}
 
-        @media (max-width: 768px) {{
+        @media (max-width: 900px) {{
+            .explorer-layout {{
+                grid-template-columns: 1fr;
+            }}
+            .explorer-sidebar {{
+                position: static;
+                max-height: none;
+            }}
             .hero h1 {{ font-size: 2rem; }}
             .meta-header {{ flex-direction: column; }}
             .meta-actions {{ width: 100%; }}
-            .btn-copy, .btn-source {{ flex: 1; justify-content: center; }}
+            .btn-action {{ flex: 1; justify-content: center; }}
         }}
     </style>
 </head>
@@ -692,8 +1566,8 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
                 <span>omni</span>
             </a>
             <div class="nav-links">
-                <a href="#browse" class="nav-link">Browse Standards</a>
-                <a href="#principles" class="nav-link">Architecture</a>
+                <a href="#explorer" class="nav-link">Code Explorer</a>
+                <a href="#principles" class="nav-link">Principles</a>
                 <a href="https://gitlab.com/renich/omni" target="_blank" rel="noopener" class="nav-link">GitLab</a>
                 <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
                     <span id="theme-icon">&#9790;</span>
@@ -710,64 +1584,78 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
         </p>
         <div class="repo-mirrors">
             <a href="https://gitlab.com/renich/omni" target="_blank" rel="noopener" class="mirror-pill primary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z"></path></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z"></path></svg>
                 GitLab Upstream (Canonical)
             </a>
             <a href="https://github.com/renich/omni" target="_blank" rel="noopener" class="mirror-pill">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
                 GitHub Mirror (SHA-1)
             </a>
             <a href="https://git.openlat.dev/renich/omni" target="_blank" rel="noopener" class="mirror-pill">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
                 OpenLat Mirror
             </a>
         </div>
     </section>
 
-    <main class="main-content" id="browse">
-        <nav class="std-nav" role="tablist" aria-label="Language standards">
-            {tabs_str}
-        </nav>
+    <main class="explorer-layout" id="explorer">
+        <!-- Sidebar Explorer -->
+        <aside class="explorer-sidebar">
+            <div class="sidebar-section">
+                <div class="section-header">
+                    <span><span class="status-dot"></span>C (Verified Suite)</span>
+                    <span>5 Editions</span>
+                </div>
+                <div class="nav-tree">
+                    {c_tree_str}
+                </div>
+            </div>
 
-        {panels_str}
+            <div class="sidebar-section">
+                <div class="section-header">
+                    <span><span class="status-dot horizon"></span>Target Horizons</span>
+                    <span>7 Planned</span>
+                </div>
+                <div class="nav-tree">
+                    {horizon_tree_str}
+                </div>
+            </div>
 
-        <section class="info-grid" id="principles">
-            <div class="info-card">
-                <h3>The Scalar State Accumulator</h3>
-                <p>
-                    Rather than polluting code with hundreds of dead <code>(void)var;</code> suppression casts, Omni mathematically consumes every declared scalar into a single state hash. This forces the compiler's optimizer and semantic analyzer to evaluate all symbols while compiling cleanly under <code>-Wall -Wextra -Werror</code>.
-                </p>
+            <div class="sidebar-section">
+                <div class="section-header">
+                    <span>Repository Docs</span>
+                    <span>Guidelines</span>
+                </div>
+                <div class="nav-tree">
+                    {docs_tree_str}
+                </div>
             </div>
-            <div class="info-card">
-                <h3>Dual-Path Saturation Pattern</h3>
-                <p>
-                    For optional language annexes (such as Decimal Floating Point or Imaginary numbers), Omni employs an active preprocessor branch for supporting compilers and an inactive token-preserving fallback for conformant compilers without DFP runtimes. 100% lexical saturation is achieved without breaking builds.
-                </p>
-            </div>
-            <div class="info-card">
-                <h3>Bidirectional Threat Modeling</h3>
-                <p>
-                    When demonstrating historically hazardous or memory-unsafe constructs (VLAs, non-local jumps, unbounded buffer copies), code is tagged inline with <code>[!SECURITY-NOTE: ID]</code> linked directly to the language's security matrix detailing CWE identifiers and hardened production alternatives.
-                </p>
-            </div>
-        </section>
+        </aside>
 
-        <section class="info-card" style="text-align: center; margin-top: 2rem;">
-            <h3>Join the Horizon &bull; Calling Contributors</h3>
-            <p style="max-width: 680px; margin: 0.5rem auto 1.5rem auto;">
-                Omni is expanding across modern systems programming languages. We are actively seeking canonical reference files for <strong>C++</strong> (C++98 to C++26), <strong>Zig</strong>, <strong>Crystal</strong>, <strong>Go</strong>, <strong>Rust</strong>, <strong>Python</strong>, and <strong>Bash</strong>.
-            </p>
-            <div style="display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap;">
-                <a href="https://gitlab.com/renich/omni/-/blob/master/CONTRIBUTING.rst" target="_blank" rel="noopener" class="mirror-pill primary">
-                    Read Contributing Guide
-                </a>
-                <a href="https://gitlab.com/renich/omni/-/blob/master/docs/process.rst" target="_blank" rel="noopener" class="mirror-pill">
-                    Architecture Methodology
-                </a>
-                <a href="https://gitlab.com/renich/omni/-/blob/master/AGENTS.md" target="_blank" rel="noopener" class="mirror-pill">
-                    AI Agent Directive
-                </a>
-            </div>
+        <!-- Main Workspace -->
+        <section class="workspace">
+            {panels_str}
+
+            <section class="info-grid" id="principles">
+                <div class="info-card">
+                    <h3>The Scalar State Accumulator</h3>
+                    <p>
+                        Rather than polluting code with dead <code>(void)var;</code> suppression casts, Omni mathematically consumes every declared scalar into a single state hash. This forces the optimizer and semantic analyzer to evaluate all symbols while compiling cleanly under <code>-Wall -Wextra -Werror</code>.
+                    </p>
+                </div>
+                <div class="info-card">
+                    <h3>Dual-Path Saturation Pattern</h3>
+                    <p>
+                        For optional language annexes (such as Decimal Floating Point or Imaginary numbers), Omni employs an active preprocessor branch for supporting compilers and an inactive token-preserving fallback for conformant compilers without DFP runtimes. 100% lexical saturation is achieved without breaking builds.
+                    </p>
+                </div>
+                <div class="info-card">
+                    <h3>Bidirectional Threat Modeling</h3>
+                    <p>
+                        When demonstrating historically hazardous or memory-unsafe constructs (VLAs, non-local jumps, unbounded buffer copies), code is tagged inline with <code>[!SECURITY-NOTE: ID]</code> linked directly to the language's security matrix detailing CWE identifiers and hardened production alternatives.
+                    </p>
+                </div>
+            </section>
         </section>
     </main>
 
@@ -781,28 +1669,31 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
     </footer>
 
     <script>
-        function switchStandard(stdId) {{
-            document.querySelectorAll('.std-tab').forEach(tab => {{
-                tab.classList.remove('active');
-                tab.setAttribute('aria-selected', 'false');
+        function switchView(viewId) {{
+            document.querySelectorAll('.nav-tree-item').forEach(btn => {{
+                btn.classList.remove('active');
             }});
-            document.querySelectorAll('.std-panel').forEach(panel => {{
+            document.querySelectorAll('.view-panel').forEach(panel => {{
                 panel.classList.remove('active');
             }});
 
-            const selectedTab = document.getElementById('tab-' + stdId);
-            const selectedPanel = document.getElementById('panel-' + stdId);
+            const targetBtn = document.getElementById('btn-' + viewId);
+            const targetPanel = document.getElementById('panel-' + viewId);
 
-            if (selectedTab && selectedPanel) {{
-                selectedTab.classList.add('active');
-                selectedTab.setAttribute('aria-selected', 'true');
-                selectedPanel.classList.add('active');
+            if (targetBtn && targetPanel) {{
+                targetBtn.classList.add('active');
+                targetPanel.classList.add('active');
+                if (history.replaceState) {{
+                    history.replaceState(null, null, '#' + viewId);
+                }} else {{
+                    window.location.hash = viewId;
+                }}
             }}
         }}
 
-        function copyCode(stdId) {{
-            const rawTextArea = document.getElementById('raw-code-' + stdId);
-            const copyBtnText = document.getElementById('copy-text-' + stdId);
+        function copyContent(viewId) {{
+            const rawTextArea = document.getElementById('raw-' + viewId);
+            const copyBtnText = document.getElementById('copy-text-' + viewId);
             if (!rawTextArea) return;
 
             navigator.clipboard.writeText(rawTextArea.value).then(() => {{
@@ -837,13 +1728,20 @@ def generate_html(standards: list[dict], css_light: str, css_dark: str) -> str:
             }}
         }}
 
-        // Initialize saved theme or system preference
+        // Initialize saved theme or system preference and route to initial view
         (function() {{
             const savedTheme = localStorage.getItem('omni-theme');
             const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
             const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
             document.documentElement.setAttribute('data-theme', initialTheme);
             updateThemeUI(initialTheme);
+
+            const hash = window.location.hash ? window.location.hash.substring(1) : 'c-c23';
+            if (document.getElementById('panel-' + hash)) {{
+                switchView(hash);
+            }} else {{
+                switchView('c-c23');
+            }}
         }})();
     </script>
 </body>

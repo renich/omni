@@ -11,15 +11,6 @@ Omni provides a single, canonical, self-contained reference file per language th
 
 Each implementation compiles cleanly under strict, zero-warning flags and acts as an executable Rosetta stone for human engineers, compiler authors, and AI coding agents.
 
-Repository Infrastructure
-=========================
-
-The canonical upstream repository is hosted on GitLab. All merge requests, issue tracking, and primary maintenance occur there:
-
-* **Primary Canonical Upstream**: `GitLab <https://gitlab.com/renich/omni>`_
-* **Secondary Mirror, GitHub**: `GitHub <https://github.com/renich/omni>`_ (strict SHA-1 object format)
-* **Secondary Mirror, OpenLat**: `OpenLat <https://git.openlat.dev/renich/omni>`_
-
 Core Principles
 ===============
 
@@ -29,90 +20,48 @@ Core Principles
 * **Bidirectional Threat Modeling**: Hazardous or historical constructs are linked inline to formal security hazard entries in an accompanying threat catalog.
 * **Zero Cognitive Padding**: Code is structured as an immediate, searchable syntax reference rather than an introductory tutorial.
 
-Supported Languages and Standards
-=================================
+Repository Infrastructure
+=========================
 
-.. list-table::
-   :widths: 15 35 30 20
-   :header-rows: 1
+The canonical upstream repository is hosted on GitLab. All merge requests, issue tracking, and primary maintenance occur there:
 
-   * - Language
-     - Standard
-     - Reference File
-     - Status
-
-   * - C
-     - ANSI X3.159-1989, ISO/IEC 9899:1990
-     - ``c/c89.c``
-     - Verified
-
-   * - C
-     - ISO/IEC 9899:1999
-     - ``c/c99.c``
-     - Verified
-
-   * - C
-     - ISO/IEC 9899:2011
-     - ``c/c11.c``
-     - Verified
-
-   * - C
-     - ISO/IEC 9899:2018
-     - ``c/c17.c``
-     - Verified
-
-   * - C
-     - ISO/IEC 9899:2024
-     - ``c/c23.c``
-     - Verified
-
-Language Horizon and Contributions
-==================================
-
-Omni is expanding across modern and systems programming languages. We actively invite reference implementations for the following targets:
-
-* **C++**: ISO/IEC 14882 editions (C++98 through C++23 and C++26).
-* **Zig**: Versions 0.13, 0.14, and development tracks.
-* **Crystal**: Version 1.12 through current releases.
-* **Go**: Modern Go editions with generics and context propagation.
-* **Rust**: 2015, 2018, 2021, and 2024 editions.
-* **Python**: Python 3.8 through 3.13.
-* **Bash**: POSIX and GNU Bash 5.x standards.
-
-If you wish to contribute a language or standard, review the :doc:`CONTRIBUTING` guide and our architectural methodology in :doc:`docs/process`.
+* **Primary Canonical Upstream**: `GitLab <https://gitlab.com/renich/omni>`_
+* **Secondary Mirror, GitHub**: `GitHub <https://github.com/renich/omni>`_ (strict SHA-1 object format)
+* **Secondary Mirror, OpenLat**: `OpenLat <https://git.openlat.dev/renich/omni>`_
+* **Web UI and Code Browser**: `GitLab Pages <https://omni-b7ef04.gitlab.io/>`_ | `GitHub Pages <https://renich.github.io/omni/>`_
 
 Quickstart and Verification
 ===========================
 
-Build and verify all language implementations using GNU Make:
+Verify all language implementations across detected compilers:
 
 .. code-block:: bash
 
    make check
 
-To verify all standards for a specific language:
+Verify an individual language or standard edition:
 
 .. code-block:: bash
 
    make check-c
+   make check-c23
 
-To verify an individual standard edition:
+Build the static documentation site and interactive code browser:
 
 .. code-block:: bash
 
-   make check-c89
-   make check-c99
-   make check-c11
-   make check-c17
-   make check-c23
+   make site
 
-Documentation Index
-===================
+Documentation
+=============
 
-* :doc:`CONTRIBUTING`: Contribution requirements, workflow, and submission checklist.
-* :doc:`docs/process`: Detailed 6-phase engineering lifecycle for authoring compendiums.
-* :doc:`docs/architecture`: Repository layout, naming conventions, and build system invariants.
+Detailed architectural guidelines, standard compendiums, and contribution instructions are maintained in dedicated reference documents:
+
+* :doc:`docs/standards`: Full matrix of verified language editions, toolchain baselines, and prospective roadmap targets.
 * :doc:`c/README`: C language standards matrix, compiler baselines, and execution notes.
 * :doc:`c/security`: Threat model catalog and security advisories for hazardous C features.
+* :doc:`docs/architecture`: Repository layout, naming conventions, and build system invariants.
+* :doc:`docs/process`: Detailed 6-phase engineering lifecycle for authoring compendiums.
+* :doc:`CONTRIBUTING`: Contribution requirements, workflow, and submission checklist.
 * :doc:`CHANGELOG`: Project version history and changelog.
 * ``AGENTS.md``: Machine directives and operating constraints for autonomous AI coding agents.
