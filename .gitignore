@@ -1,0 +1,12 @@
+# Build artifacts
+build/
+bin/
+*.o
+*.so
+*.a
+*.out
+
+# Editor / OS noise
+.*.swp
+*~
+.DS_Store
