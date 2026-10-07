@@ -13,6 +13,7 @@
 #include <uchar.h>
 #include <complex.h>
 #include <stdatomic.h>
+#include <stdbit.h>
 #include <setjmp.h>
 #include <signal.h>
 #include <math.h>
@@ -87,7 +88,7 @@ static inline int math_increment(int x) ATTR_UNSEQUENCED {
 
 [[deprecated("use modern_terminator instead")]]
 [[maybe_unused]]
-static void legacy_terminator(void) {
+_Noreturn static void legacy_terminator(void) {
     exit(EXIT_FAILURE);
 }
 
@@ -99,6 +100,30 @@ static void modern_terminator(void) {
 /*
  * Section 3: Types, Enums, Bitfields, and Complex Declarators (Clause 6.7)
  */
+
+/*
+ * Dual-Path Saturation Pattern (ISO C23 Clause 6.4.1):
+ * Optional normative keywords (Annex F/H DFP and Annex G Imaginary)
+ */
+#ifdef __STDC_IEC_60559_DFP__
+static _Decimal32  active_d32  = 1.0DF;
+static _Decimal64  active_d64  = 1.0DD;
+static _Decimal128 active_d128 = 1.0DL;
+#else
+#  if 0
+typedef _Decimal32  d32_ref;
+typedef _Decimal64  d64_ref;
+typedef _Decimal128 d128_ref;
+#  endif
+#endif
+
+#ifdef __STDC_IEC_559_COMPLEX__
+/* Annex G Imaginary types supported */
+#else
+#  if 0
+typedef _Imaginary double imag_ref;
+#  endif
+#endif
 
 typedef enum StateMachine : uint8_t {
     STATE_INIT = 0,
@@ -226,8 +251,14 @@ int main(void) {
     constexpr int compile_magic = 0xBEEF;
     bool active_flag = true;
     active_flag = false;
+    _Bool legacy_bool_flag = false; /* Retained keyword in ISO C23 §6.4.1 */
     nullptr_t null_token = nullptr;
     int *null_ptr = nullptr;
+
+    /* Type-generic bitwise operations from stdbit.h (C23) */
+    unsigned int bit_sample = 0b0001'0000;
+    bool single_bit_flag = stdc_has_single_bit(bit_sample);
+    unsigned int l_zeros = stdc_leading_zeros(bit_sample);
 
     typeof(deduced_double) cloned_double = 2.71828;
     typeof_unqual(const volatile int) clean_integer = 128;
@@ -314,10 +345,13 @@ int main(void) {
     int *compound_arr = (int[]){ 10, 20, 30 };
     struct Container compound_cont = (struct Container){ .id = 99, .sub_code = 1 };
 
-    /* Block scope variable length array (VLA) */
+    /* [!SECURITY-NOTE: SEC-VLA-01] Block scope VLA object (stack exhaustion hazard) */
     size_t dynamic_dim = (size_t)(fast_counter + 3);
     int vla_block[dynamic_dim];
     vla_block[0] = math_square(5);
+
+    /* VM (variably modified) type pointer (mandatory in ISO C23) */
+    int (*vm_ptr)[dynamic_dim] = &vla_block;
 
     /* Dynamic allocation with flexible array member */
     DynamicPacket *packet = malloc(sizeof(DynamicPacket) + (sizeof(int) * 2));
@@ -449,7 +483,8 @@ label_pre_declaration:
         test_matrix[0][0] + test_seq[0] + empty_param_res + run_counter +
         tls_var + legacy_tls_var + external_symbol + (null_token == null_ptr ? 1 : 0) +
         (active_flag ? 1 : 0) + (spin_acquired ? 1 : 0) +
-        align_c23 + align_c11 + octal_literal + \u03c0_symbol;
+        align_c23 + align_c11 + octal_literal + \u03c0_symbol +
+        (legacy_bool_flag ? 1 : 0) + (single_bit_flag ? 1 : 0) + l_zeros + (*vm_ptr)[0];
 
 #if defined(__BITINT_MAXWIDTH__)
     checksum += (long double)bit_int_val + (long double)u_bit_int_val;

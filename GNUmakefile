@@ -1,52 +1,74 @@
-CC ?= gcc
-CLANG ?= clang
-LDFLAGS ?= -lm
-PTHREAD ?= -pthread
+# GNUmakefile for omni
+.DELETE_ON_ERROR:
 
 BUILD_DIR := build
+SRC_DIR   := c
+STANDARDS := c89 c99 c11 c17 c23
 
-C_STANDARDS := c89 c99 c11 c17 c23
+# 1. Parse-time Compiler Detection (Prevents phantom target idempotency bugs)
+COMPILERS :=
+ifneq ($(shell command -v gcc 2>/dev/null),)
+	COMPILERS += gcc
+endif
+ifneq ($(shell command -v clang 2>/dev/null),)
+	COMPILERS += clang
+endif
 
-# Compiler flags per standard
-CFLAGS_c89 := -std=c89 -Wall -Wextra -pedantic -Werror
-CFLAGS_c99 := -std=c99 -Wall -Wextra -pedantic -Werror
-CFLAGS_c11 := -std=c11 -Wall -Wextra -pedantic -Werror $(PTHREAD)
-CFLAGS_c17 := -std=c17 -Wall -Wextra -pedantic -Werror $(PTHREAD)
-CFLAGS_c23 := -std=c23 -Wall -Wextra -pedantic -Werror $(PTHREAD)
+ifeq ($(COMPILERS),)
+	$(error No C compilers (gcc or clang) found in PATH)
+endif
+
+# 2. Matrix Target Generation
+# Targets: build/c89_gcc build/c89_clang build/c99_gcc ...
+TARGETS := $(foreach std,$(STANDARDS),$(foreach comp,$(COMPILERS),$(BUILD_DIR)/$(std)_$(comp)))
+
+# 3. Compiler Flags
+# -I$(SRC_DIR) guarantees #embed and headers resolve portably regardless of invocation context
+CFLAGS_BASE := -Wall -Wextra -pedantic -Werror -I$(SRC_DIR)
+LDFLAGS     := -lm
+
+# Thread flags for C11, C17, and C23
+THREAD_FLAG_c89 :=
+THREAD_FLAG_c99 :=
+THREAD_FLAG_c11 := -pthread
+THREAD_FLAG_c17 := -pthread
+THREAD_FLAG_c23 := -pthread
 
 all: check
 
 $(BUILD_DIR):
 	mkdir -p $@
 
-# Pattern rules for GCC and Clang builds
-define make_c_targets
-$$(BUILD_DIR)/$(1)_gcc: c/$(1).c | $$(BUILD_DIR)
-	$$(CC) $$(CFLAGS_$(1)) $$< $$(LDFLAGS) -o $$@
+# 4. Static Pattern Rules mapped dynamically by standard ($*)
+$(filter %_gcc,$(TARGETS)): $(BUILD_DIR)/%_gcc: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	gcc -std=$* $(CFLAGS_BASE) $(THREAD_FLAG_$*) $< $(LDFLAGS) -o $@
 
-$$(BUILD_DIR)/$(1)_clang: c/$(1).c | $$(BUILD_DIR)
-	@if command -v $$(CLANG) >/dev/null 2>&1; then \
-		$$(CLANG) $$(CFLAGS_$(1)) $$< $$(LDFLAGS) -o $$@; \
-	fi
+$(filter %_clang,$(TARGETS)): $(BUILD_DIR)/%_clang: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	clang -std=$* $(CFLAGS_BASE) $(THREAD_FLAG_$*) $< $(LDFLAGS) -o $@
 
-check-$(1): $$(BUILD_DIR)/$(1)_gcc $$(BUILD_DIR)/$(1)_clang
-	@echo "==> Verifying $(1) (GCC)..."
-	./$$(BUILD_DIR)/$(1)_gcc
-	@if [ -f $$(BUILD_DIR)/$(1)_clang ]; then \
-		echo "==> Verifying $(1) (Clang)..."; \
-		./$$(BUILD_DIR)/$(1)_clang; \
-	fi
+# 5. Verification Harness
+check-c: $(TARGETS)
+	@echo "==> Running verification test suite across all detected compilers ($(COMPILERS))..."
+	@for target in $(TARGETS); do \
+		echo "--> Executing $$target ..."; \
+		./$$target >/dev/null || exit 1; \
+	done
+	@echo "==> All C standards verified cleanly across compilers: $(COMPILERS)"
+
+define make_check_standard
+check-$(1): $$(filter $$(BUILD_DIR)/$(1)_%,$$(TARGETS))
+	@for target in $$^; do \
+		echo "--> Executing $$$$target ..."; \
+		./$$$$target >/dev/null || exit 1; \
+	done
 	@echo "==> $(1) verification passed."
 endef
 
-$(foreach std,$(C_STANDARDS),$(eval $(call make_c_targets,$(std))))
-
-check-c: $(addprefix check-,$(C_STANDARDS))
-	@echo "==> All C standards (C89, C99, C11, C17, C23) verified successfully."
+$(foreach std,$(STANDARDS),$(eval $(call make_check_standard,$(std))))
 
 check: check-c
 
 clean:
 	rm -rf $(BUILD_DIR)
 
-.PHONY: all check check-c clean $(addprefix check-,$(C_STANDARDS))
+.PHONY: all check check-c clean $(addprefix check-,$(STANDARDS))

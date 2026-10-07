@@ -97,3 +97,8 @@ To verify an individual standard:
    make check-c11
    make check-c17
    make check-c23
+
+Security and Hazardous Feature Catalog
+======================================
+
+Omni intentionally exercises historical and memory-hazardous language features (such as Variable-Length Arrays, unbounded operations, and ``setjmp``/``longjmp``) to achieve complete syntactic coverage. For the corresponding threat model index, CWE mappings, and production hardening guidelines, refer to ``c/security.rst``.
