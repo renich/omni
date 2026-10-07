@@ -68,9 +68,20 @@ endef
 
 $(foreach std,$(STANDARDS),$(eval $(call make_check_standard,$(std))))
 
-check: check-c
+# 6. Documentation Linter
+RST_FILES := $(shell find . -name "*.rst" -not -path "./.git/*")
+check-docs:
+	@if command -v rstcheck >/dev/null 2>&1; then \
+		echo "==> Verifying documentation syntax with rstcheck..."; \
+		rstcheck --report-level warning $(RST_FILES); \
+		echo "==> Documentation syntax verified cleanly."; \
+	else \
+		echo "[omni] rstcheck not found in PATH; skipping documentation check."; \
+	fi
+
+check: check-c check-docs
 
 clean:
 	rm -rf $(BUILD_DIR)
 
-.PHONY: all check check-c clean $(addprefix check-,$(STANDARDS))
+.PHONY: all check check-c check-docs clean $(addprefix check-,$(STANDARDS))
