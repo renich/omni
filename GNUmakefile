@@ -81,7 +81,15 @@ check-docs:
 
 check: check-c check-docs
 
+# 7. AI Agent Rule Synchronization
+agent-rules:
+	@echo "==> Synchronizing AI agent rules..."
+	@cat .agents/rules/*.md > .cursorrules
+	@cp .cursorrules CLAUDE.md
+	@cp .cursorrules .windsurfrules
+	@echo "==> AI agent rules synchronized (.cursorrules, CLAUDE.md, .windsurfrules)."
+
 clean:
 	rm -rf $(BUILD_DIR)
 
-.PHONY: all check check-c check-docs clean $(addprefix check-,$(STANDARDS))
+.PHONY: all check check-c check-docs agent-rules clean $(addprefix check-,$(STANDARDS))

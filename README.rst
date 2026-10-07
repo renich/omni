@@ -11,6 +11,15 @@ Omni provides a single, canonical, self-contained reference file per language th
 
 Each implementation compiles cleanly under strict, zero-warning flags and acts as an executable Rosetta stone for human engineers, compiler authors, and AI coding agents.
 
+Repository Infrastructure
+=========================
+
+The canonical upstream repository is hosted on GitLab. All merge requests, issue tracking, and primary maintenance occur there:
+
+* **Primary Canonical Upstream**: `GitLab <https://gitlab.com/renich/omni>`_
+* **Secondary Mirror, GitHub**: `GitHub <https://github.com/renich/omni>`_ (strict SHA-1 object format)
+* **Secondary Mirror, OpenLat**: `OpenLat <https://git.openlat.dev/renich/omni>`_
+
 Core Principles
 ===============
 
@@ -106,3 +115,4 @@ Documentation Index
 * :doc:`c/README`: C language standards matrix, compiler baselines, and execution notes.
 * :doc:`c/security`: Threat model catalog and security advisories for hazardous C features.
 * :doc:`CHANGELOG`: Project version history and changelog.
+* ``AGENTS.md``: Machine directives and operating constraints for autonomous AI coding agents.
