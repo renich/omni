@@ -1,0 +1,16 @@
+# GitLab CI configuration for omni
+# Ultra-lightweight: executes only on default branch to conserve runner quota.
+
+pages:
+  stage: deploy
+  image: python:3.12-alpine
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  before_script:
+    - pip install --no-cache-dir pygments
+  script:
+    - python3 scripts/build_site.py
+  artifacts:
+    paths:
+      - public
+    expire_in: 30 days

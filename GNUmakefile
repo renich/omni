@@ -89,7 +89,12 @@ agent-rules:
 	@cp .cursorrules .windsurfrules
 	@echo "==> AI agent rules synchronized (.cursorrules, CLAUDE.md, .windsurfrules)."
 
-clean:
-	rm -rf $(BUILD_DIR)
+# 8. Documentation Site Generator
+site:
+	@echo "==> Building static documentation site and code browser..."
+	python3 scripts/build_site.py
 
-.PHONY: all check check-c check-docs agent-rules clean $(addprefix check-,$(STANDARDS))
+clean:
+	rm -rf $(BUILD_DIR) public
+
+.PHONY: all check check-c check-docs agent-rules site clean $(addprefix check-,$(STANDARDS))

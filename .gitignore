@@ -1,6 +1,7 @@
 # Build artifacts
 build/
 bin/
+public/
 *.o
 *.so
 *.a
