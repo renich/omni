@@ -119,8 +119,8 @@ def build_site(repo_root: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     c_lexer = CLexer()
 
-    formatter_light = HtmlFormatter(style="github-light", nowrap=False, linenos="table", cssclass="highlight-light")
-    formatter_dark = HtmlFormatter(style="github-dark", nowrap=False, linenos="table", cssclass="highlight-dark")
+    formatter_light = HtmlFormatter(style="friendly", nowrap=False, linenos="table", cssclass="highlight-light")
+    formatter_dark = HtmlFormatter(style="dracula", nowrap=False, linenos="table", cssclass="highlight-dark")
 
     css_light = formatter_light.get_style_defs(".highlight-light")
     css_dark = formatter_dark.get_style_defs(".highlight-dark")
