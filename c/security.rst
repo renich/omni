@@ -34,7 +34,7 @@ Threat Model Index
      - Replace ``setjmp``/``longjmp`` with explicit error return codes and structured status propagation.
 
    * - ``SEC-C89-UNBOUNDED-01``
-     - C89, C99
+     - C89
      - Classic buffer overflow via unbounded string utilities (CWE-120)
      - Prohibit ``strcpy``/``strcat``; enforce bounded alternatives or Annex K bounds-checking interfaces.
 

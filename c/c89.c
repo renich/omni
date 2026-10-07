@@ -56,6 +56,7 @@ enum Status {
     /* Note: Trailing comma is forbidden in C89 */
 };
 
+/* [!SECURITY-NOTE: SEC-BITFIELD-01] Implementation-defined bitfield packing & signedness */
 struct BitFieldUnit {
     unsigned int flag_a : 1;
     unsigned int flag_b : 1;
@@ -110,10 +111,11 @@ static jmp_buf nonlocal_buf;
 extern int external_symbol;
 int external_symbol = 42;
 
-static void sigusr_handler(int sig) {
+static void sigint_handler(int sig) {
     (void)sig;
 }
 
+/* [!SECURITY-NOTE: SEC-JMP-01] Non-local jumps bypass stack unwinding and clobber registers */
 static int execute_nonlocal_jump(void) {
     volatile int jump_performed;
     jump_performed = 0;
@@ -160,6 +162,7 @@ int main(void) {
     wchar_t c_wide;
     const char *s_ascii;
     const wchar_t *s_wide;
+    char dest_buf[64];
 
     enum Status current_status;
     struct Record record_inst;
@@ -269,8 +272,11 @@ target_label:
     /* In C89, labels require an explicit statement (e.g. null statement ;) */
 end_control_label: ;
 
+    /* [!SECURITY-NOTE: SEC-C89-UNBOUNDED-01] Classic buffer overflow via unbounded string copy */
+    strcpy(dest_buf, s_ascii);
+
     jump_result = execute_nonlocal_jump();
-    signal(SIGUSR1, sigusr_handler);
+    signal(SIGINT, sigint_handler);
 
     provider = array_provider;
     resolved_triplet = provider();
@@ -287,7 +293,7 @@ end_control_label: ;
         (double)legacy_auto + fast_counter + run_counter + *ptr_hw + *const_p +
         s_char + u_char + s_short + u_short + s_int + u_int + s_long + u_long +
         dec_float + reg_double + (double)ext_double + octal_literal + hex_literal +
-        c_ascii + (int)c_wide + s_ascii[0] + (int)s_wide[0] + current_status +
+        c_ascii + (int)c_wide + s_ascii[0] + (int)s_wide[0] + dest_buf[0] + current_status +
         record_inst.flags.val + record_inst.payload.id + record_inst.precision +
         static_arr[0] + symbolic_var + arithmetic + bitwise + logical + ternary +
         comma_res + triplet_val + dispatch_res + var_sum + external_symbol +

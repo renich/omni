@@ -54,6 +54,18 @@ _Pragma("message(\"Omni: Verifying ISO C99 Language Construct Compliance\")")
  * Section 2: Declarations, Structs, VLAs, Inlines, Qualifiers (Clause 6.7)
  */
 
+/*
+ * Dual-Path Saturation Pattern (ISO C99 Clause 6.7.2):
+ * Optional normative keyword _Imaginary (Annex G)
+ */
+#ifdef __STDC_IEC_559_COMPLEX__
+/* Annex G Imaginary types supported */
+#else
+#  if 0
+typedef _Imaginary double imag_ref;
+#  endif
+#endif
+
 enum Status {
     STATUS_INIT = 0,
     STATUS_WORK = 1,
@@ -65,6 +77,7 @@ struct DynamicPacket {
     int payload[]; // Flexible array member
 };
 
+// [!SECURITY-NOTE: SEC-BITFIELD-01] Implementation-defined bitfield packing & signedness
 struct BitFields {
     unsigned int flag_a : 1;
     unsigned int flag_b : 1;
@@ -122,10 +135,11 @@ static jmp_buf nonlocal_buf;
 extern int external_symbol;
 int external_symbol = 42;
 
-static void sigusr_handler(int sig) {
+static void sigint_handler(int sig) {
     (void)sig;
 }
 
+// [!SECURITY-NOTE: SEC-JMP-01] Non-local jumps bypass stack unwinding and clobber registers
 static int execute_nonlocal_jump(void) {
     volatile int jump_performed = 0;
     if (setjmp(nonlocal_buf) == 0) {
@@ -162,6 +176,7 @@ int main(void) {
     // Boolean type
     bool active_flag = true;
     active_flag = false;
+    _Bool legacy_bool_flag = 1;
 
     // Floating-point representations
     float dec_float = 1.25e-2f;
@@ -194,7 +209,7 @@ int main(void) {
     int *compound_arr = (int[]){ 10, 20, 30 };
     struct BitFields compound_bf = (struct BitFields){ .flag_a = 0, .flag_b = 1, .val = 3 };
 
-    // Variable length array in block scope
+    // [!SECURITY-NOTE: SEC-VLA-01] Block scope VLA object (stack exhaustion hazard)
     size_t vla_len = (size_t)(fast_counter + 3);
     int vla_storage[vla_len];
     vla_storage[0] = math_square(5);
@@ -257,7 +272,7 @@ target_label:
 end_control_label: ;
 
     int jump_res = execute_nonlocal_jump();
-    signal(SIGUSR1, sigusr_handler);
+    signal(SIGINT, sigint_handler);
     feclearexcept(FE_ALL_EXCEPT);
 
     array_provider_fn provider = array_provider;
@@ -282,7 +297,7 @@ end_control_label: ;
     long double checksum =
         (long double)legacy_auto + fast_counter + run_counter + *ptr_hw + *const_p + *restrict_p +
         s_char + u_char + s_short + u_short + s_int + u_int + s_long + u_long +
-        (s_llong + u_llong) + exact_32 + exact_u64 + (active_flag ? 1 : 0) +
+        (s_llong + u_llong) + exact_32 + exact_u64 + (active_flag ? 1 : 0) + (legacy_bool_flag ? 1 : 0) +
         dec_float + reg_double + ext_double + hex_float +
         creal(complex_f) + cimag(complex_d) + c_ascii + (int)c_wide + s_ascii[0] + (int)s_wide[0] +
         sparse_arr[1] + bit_unit.val + compound_arr[0] + compound_bf.val +

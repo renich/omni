@@ -133,6 +133,7 @@ typedef enum StateMachine : uint8_t {
 
 typedef union RegisterWord {
     uint32_t raw;
+    /* [!SECURITY-NOTE: SEC-BITFIELD-01] Implementation-defined bitfield packing & signedness */
     struct {
         uint32_t flag_a : 1;
         uint32_t flag_b : 1;
@@ -234,7 +235,7 @@ static jmp_buf nonlocal_buf;
 extern int external_symbol;
 int external_symbol = 0xAA;
 
-static void sigusr_handler(int sig) {
+static void sigint_handler(int sig) {
     (void)sig;
 }
 
@@ -318,6 +319,7 @@ int main(void) {
     int *const const_p = &memory_target;
     int *restrict restrict_p = &memory_target;
 
+    /* [!SECURITY-NOTE: SEC-ATOMIC-01] Relaxed atomic operations lack synchronization barriers */
     _Atomic int atomic_counter = 0;
     _Atomic(uint32_t) atomic_wrapped = 100U;
     atomic_init(&atomic_counter, 1);
@@ -429,6 +431,7 @@ label_pre_declaration:
     }
 
     /* Non-local jumps, signals, floating-point environment */
+    /* [!SECURITY-NOTE: SEC-JMP-01] Non-local jumps bypass stack unwinding and clobber registers */
     volatile bool jump_performed = false;
     if (setjmp(nonlocal_buf) == 0) {
         if (!jump_performed) {
@@ -436,7 +439,7 @@ label_pre_declaration:
             longjmp(nonlocal_buf, 1);
         }
     }
-    signal(SIGUSR1, sigusr_handler);
+    signal(SIGINT, sigint_handler);
 
     /* Calling function pointers, VLA prototypes, and qualifiers */
     array_provider_fn provider = array_pointer_provider;

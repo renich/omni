@@ -58,6 +58,18 @@ _Pragma("message(\"Omni: Verifying ISO C11 Language Construct Compliance\")")
  * Section 2: Assertions, Atomics, Alignment, and Types (Clause 6.7)
  */
 
+/*
+ * Dual-Path Saturation Pattern (ISO C11 Clause 6.7.2):
+ * Optional normative keyword _Imaginary (Annex G)
+ */
+#ifdef __STDC_IEC_559_COMPLEX__
+/* Annex G Imaginary types supported */
+#else
+#  if 0
+typedef _Imaginary double imag_ref;
+#  endif
+#endif
+
 // In C11, _Static_assert requires two arguments
 _Static_assert(__STDC_VERSION__ == 201112L, "C11 version verification");
 _Static_assert(sizeof(int32_t) == 4, "int32_t must be 4 bytes");
@@ -85,6 +97,7 @@ struct DynamicPacket {
     int payload[]; // Flexible array member
 };
 
+// [!SECURITY-NOTE: SEC-BITFIELD-01] Implementation-defined bitfield packing & signedness
 struct BitFields {
     unsigned int flag_a : 1;
     unsigned int flag_b : 1;
@@ -149,10 +162,11 @@ static jmp_buf nonlocal_buf;
 extern int external_symbol;
 int external_symbol = 42;
 
-static void sigusr_handler(int sig) {
+static void sigint_handler(int sig) {
     (void)sig;
 }
 
+// [!SECURITY-NOTE: SEC-JMP-01] Non-local jumps bypass stack unwinding and clobber registers
 static int execute_nonlocal_jump(void) {
     volatile int jump_performed = 0;
     if (setjmp(nonlocal_buf) == 0) {
@@ -189,6 +203,7 @@ int main(void) {
 
     bool active_flag = true;
     active_flag = false;
+    _Bool legacy_bool_flag = 1;
 
     float dec_float = 1.25e-2f;
     double reg_double = 3.1415926535;
@@ -216,7 +231,8 @@ int main(void) {
     int *const const_p = &memory_target;
     int *restrict restrict_p = &memory_target;
 
-    _Atomic int atomic_counter = 0;
+    // [!SECURITY-NOTE: SEC-ATOMIC-01] Relaxed atomic operations lack synchronization barriers
+    _Atomic int atomic_counter = ATOMIC_VAR_INIT(0);
     _Atomic(uint32_t) atomic_wrapped = 100U;
     atomic_flag atomic_spin = ATOMIC_FLAG_INIT;
 
@@ -240,7 +256,7 @@ int main(void) {
     int *compound_arr = (int[]){ 10, 20, 30 };
     struct Container compound_cont = (struct Container){ .id = 200, .sub_code = 24 };
 
-    // Variable length array in block scope
+    // [!SECURITY-NOTE: SEC-VLA-01] Block scope VLA object (stack exhaustion hazard)
     size_t vla_len = (size_t)(fast_counter + 3);
     int vla_storage[vla_len];
     vla_storage[0] = math_square(5);
@@ -299,7 +315,7 @@ target_label:
 end_control_label: ;
 
     int jump_res = execute_nonlocal_jump();
-    signal(SIGUSR1, sigusr_handler);
+    signal(SIGINT, sigint_handler);
     feclearexcept(FE_ALL_EXCEPT);
 
     array_provider_fn provider = array_provider;
@@ -324,7 +340,7 @@ end_control_label: ;
     long double checksum =
         (long double)legacy_auto + fast_counter + run_counter + *ptr_hw + *const_p + *restrict_p +
         s_char + u_char + s_short + u_short + s_int + u_int + s_long + u_long +
-        (s_llong + u_llong) + exact_32 + exact_u64 + (active_flag ? 1 : 0) +
+        (s_llong + u_llong) + exact_32 + exact_u64 + (active_flag ? 1 : 0) + (legacy_bool_flag ? 1 : 0) +
         dec_float + reg_double + ext_double + hex_float +
         creal(complex_f) + cimag(complex_d) + c_ascii + (int)c_wide + (int)c_u16 + (int)c_u32 +
         s_ascii[0] + (int)s_wide[0] + (int)s_u16[0] + (int)s_u32[0] + s_u8[0] +

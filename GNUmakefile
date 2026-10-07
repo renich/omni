@@ -1,4 +1,6 @@
 # GNUmakefile for omni
+SHELL       := /usr/bin/bash
+.SHELLFLAGS := -euo pipefail -c
 .DELETE_ON_ERROR:
 
 BUILD_DIR := build
